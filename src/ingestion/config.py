@@ -14,9 +14,7 @@ KAGGLE_DATASET = "promptcloud/amazon-product-dataset-2020"
 
 PRODUCTS_PARQUET = PROCESSED_DIR / "products.parquet"
 
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "local")
-OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
-LOCAL_EMBEDDING_MODEL = os.getenv("LOCAL_EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 # Matched against the top-level segment of the pipe-delimited Category
 # breadcrumb (e.g. "Home & Kitchen | Bedding | ..."). Exact top-level match,

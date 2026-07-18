@@ -7,19 +7,19 @@ raw Kaggle dump into a Chroma vector index that the `rag.search` MCP tool querie
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # defaults to local embeddings, no API key needed
+cp .env.example .env   # embeddings run fully local, no API key needed
 ```
 
 Requires a Kaggle API token at `~/.kaggle/kaggle.json` (from kaggle.com/settings → API → Create New Token).
 
 ## Pipeline
 
-Run in order (or step through `notebooks/01_data_ingestion.ipynb`):
+Run in order (or step through `notebooks/00_eda.ipynb` then `notebooks/01_data_ingestion.ipynb`):
 
 ```bash
 cd src/ingestion
 python download_data.py    # kagglehub -> data/raw/*.csv
-python inspect_schema.py   # confirm real column names before trusting clean.py
+python inspect_schema.py   # confirm real column names (see notebooks/00_eda.ipynb for the full analysis)
 python clean.py            # data/raw -> data/processed/products.parquet
 python build_index.py      # products.parquet -> data/chroma_db/ (Chroma collection)
 python retriever.py        # sanity-check query
@@ -28,22 +28,48 @@ python retriever.py        # sanity-check query
 | Stage | Input | Output | What it does |
 |---|---|---|---|
 | `download_data.py` | Kaggle | `data/raw/*.csv` | Fetches `promptcloud/amazon-product-dataset-2020` via kagglehub |
-| `inspect_schema.py` | `data/raw/*.csv` | stdout | Prints real column names/dtypes — PromptCloud's schema varies by revision |
-| `clean.py` | `data/raw/*.csv` | `data/processed/products.parquet` | Resolves fields via alias matching, parses price/rating, filters to the category slice, derives `price_per_unit` |
-| `build_index.py` | `products.parquet` | `data/chroma_db/` | Embeds `title + features + ingredients`, upserts into a persistent Chroma collection (cosine distance) with filterable metadata |
+| `inspect_schema.py` | `data/raw/*.csv` | stdout | Prints real column names/dtypes |
+| `clean.py` | `data/raw/*.csv` | `data/processed/products.parquet` | Reads the known columns directly (see [Column names](#column-names)), parses price, strips boilerplate text, filters to the category slice, derives `price_per_unit` |
+| `build_index.py` | `products.parquet` | `data/chroma_db/` | Embeds `title + features + ingredients` with all-MiniLM-L6-v2, upserts into a persistent Chroma collection (cosine distance) with filterable metadata |
 | `retriever.py` | `data/chroma_db/` | — | `RagRetriever.search(query, k, where)` — the function the `rag.search` MCP tool should import directly |
+
+`notebooks/00_eda.ipynb` is the exploratory pass that justifies every choice below (column completeness, category distribution, price distribution) — run it first if you want the reasoning, not just the conclusions.
 
 Verified end-to-end against the real download: 10,002 raw rows → 708 products in the `Home & Kitchen` slice → indexed and queryable (see [Known data-quality limitations](#known-data-quality-limitations)).
 
 ## Schema
 
-`products.parquet` columns: `id, title, brand, category, price, rating, ingredients, features, unit_qty, unit, price_per_unit, url, doc_id`.
+`products.parquet` columns: `id, title, brand, category, price, rating, ingredients, model_number, features, unit_qty, unit, price_per_unit, url, doc_id`.
 
 `doc_id` is the stable citation key used by the Answerer agent and surfaced in the UI's citation panel.
+
+### Column names
+
+`clean.py` reads these raw CSV columns directly by name — no alias/fuzzy matching, since this file's schema is fixed and already confirmed via `inspect_schema.py`:
+
+| target field | raw column |
+|---|---|
+| `id` | `Uniq Id` |
+| `title` | `Product Name` |
+| `brand` | `Brand Name` (always empty — see below) |
+| `category` | `Category` |
+| `price` | `Selling Price` (`$`-anchored parse — see below) |
+| `ingredients` | `Ingredients` (always empty — see below) |
+| `model_number` | `Model Number` (82% populated, not embedded, kept as a lookup/citation aid) |
+| `url` | `Product Url` |
+| `features` | `About Product` + `Technical Details`, boilerplate-stripped (see below) |
+| `unit_qty` / `unit` | parsed from `Product Name` / `Shipping Weight` / `About Product` |
+| `rating` | none — no such column exists in this file, hardcoded to `None` |
+
+If the team swaps in a different PromptCloud CSV with a different schema, update the `COL_*` constants at the top of `clean.py` — run `inspect_schema.py` against the new file first.
+
+**Why `Technical Details` instead of `Product Specification`?** `Product Specification` looked useful at first glance but turned out to be ~100% boilerplate — every populated row is just `Shipping Weight: X (View shipping rates and policies)|ASIN: Y|#rank in Z` with the words run together (no spaces: `ProductDimensions:5.7x4.9x1.2inches`), which adds noise, not signal, to an embedding. `Technical Details` (92% populated) has genuine free-text product descriptions instead, so it's what actually goes into `features`.
 
 ## Category slice
 
 `CATEGORY_TOP_LEVEL` in `.env` (default `Home & Kitchen`) is matched exactly against the top-level segment of each product's `|`-delimited `Category` breadcrumb — e.g. the `Home & Kitchen` in `Home & Kitchen | Bedding | ...`.
+
+**Do products carry multiple categories?** Checked directly in `notebooks/00_eda.ipynb` / `_matches_category`'s docstring: no. Every `Category` value in this file is a single hierarchical breadcrumb (top → leaf, 1–6 levels deep, `|`-delimited) — there's no second delimiter (`;`, `||`, newline) joining independent category assignments, no row repeats a top-level segment, and every `Uniq Id` appears exactly once (no duplicate rows representing the same product filed under a second category). Matching the top-level breadcrumb segment is therefore a correct 1:1 filter for this file, not a lossy approximation of a many-to-many relationship. (Caveat: a product can still be *topically* relevant to Home & Kitchen while filed under a different top-level, e.g. a kids' play-kitchen set under `Toys & Games` — that's a taxonomy/relevance tradeoff, not a parsing bug.)
 
 **Why not Household Cleaning, per the spec's suggestion?** The actual `promptcloud/amazon-product-dataset-2020` file kagglehub returns (`marketing_sample_for_amazon_com-ecommerce__20200101_20200131__10k_data.csv`, 10,002 rows) is a general marketplace sample dominated by Toys & Games (6,662 rows). Only 23 rows fall under `Health & Household` at all, and just 7 have "cleaning" anywhere in their category breadcrumb — too thin for a meaningful comparison demo. `Home & Kitchen` (708 rows: Home Décor, Furniture, Bedding, Event & Party Supplies, Kitchen & Dining) is the closest well-populated category to the spec's product-discovery use case. Swap `CATEGORY_TOP_LEVEL` back to `Health & Household` (or any other top-level category) if the team decides a thinner, on-spec slice is preferable — the pipeline doesn't care which one you pick.
 
@@ -54,16 +80,17 @@ An earlier version of this filter matched the keyword "clean" against title/desc
 Confirmed against the real downloaded file — worth stating explicitly in the writeup/safety notes:
 
 - **`Brand Name` and `Ingredients` are 100% empty** across all 10,002 raw rows, not just this slice. The Answerer agent should not claim brand or ingredient facts for these products; `retriever.py` already returns `None` for both rather than fabricating a value.
-- **No rating/review-count column exists** in this file at all (`clean.py` logs a warning and leaves `rating` as `None`). If the team wants ratings for the demo, either source a `reviews.parquet` from a different PromptCloud file or drop rating-based comparisons from the example queries.
-- **`price_per_unit`** is only derived when a quantity+unit (oz, lb, ct, etc.) is parseable from the title/weight/description text — 622 of 708 rows (88%) in the current slice. `price` itself is populated for 695/708.
+- **No rating/review-count column exists** in this file at all (`clean.py` leaves `rating` as `None`). If the team wants ratings for the demo, either source a `reviews.parquet` from a different PromptCloud file or drop rating-based comparisons from the example queries.
+- **`Selling Price` has ~4% garbage values** dataset-wide (`"from 2 sellers"`, `"Total price:"`, free-text shipping blurbs, `"$8.25 - $31.95"` ranges). `_parse_price` requires the value to start with `$` before extracting a number — this matters: an earlier, unanchored version of the parser mis-read `"from 2 sellers"` as `$2.00` and pulled a random `$5` out of an unrelated shipping-policy sentence. For genuine ranges (`"$8.25 - $31.95"`), the low end is used as the representative price.
+- **`price_per_unit`** is only derived when a quantity+unit (oz, lb, ct, etc.) is parseable from the title/weight/description text — 597 of 708 rows (84%) in the current slice. `price` itself is populated for 695/708.
+- **`About Product` / `Technical Details` contain recurring boilerplate** (`"Make sure this fits by entering your model number."` in 76% of rows, a return-policy blurb in 43% of `Technical Details` rows) that `clean.py` strips before building `features`, so it doesn't dilute the embedding for every product identically.
+- **`Is Amazon Seller`** (Y/N, 100% populated) isn't currently surfaced — could be worth exposing as a trust signal if the Answerer agent wants to flag third-party vs. Amazon-fulfilled listings.
 
-## Embedding backend (model-agnostic)
+## Embedding backend
 
-Set `EMBEDDING_PROVIDER` in `.env`:
-- `local` (default) — `sentence-transformers/all-MiniLM-L6-v2`, no API key, runs offline.
-- `openai` — `text-embedding-3-small`, requires `OPENAI_API_KEY`.
+`all-MiniLM-L6-v2` via `sentence-transformers` (`embeddings.py`), runs fully local (CPU/MPS/CUDA) — no API key, no external calls. 22M params, 384-dim vectors, embeds the full 708-product slice in a few seconds. Override the model name with `EMBEDDING_MODEL` in `.env` if the team wants something different; `build_index.py`/`retriever.py` only depend on the `.embed(texts) -> list[list[float]]` interface, not on this model specifically.
 
-Both implement the same `EmbeddingProvider.embed(texts) -> list[list[float]]` interface in `embeddings.py`, so swapping providers doesn't touch `build_index.py` or `retriever.py`.
+**Why not Qwen?** Qwen's embedding line (Qwen3-Embedding) only ships in 0.6B/4B/8B — there's no smaller Qwen option, and 0.6B is ~30x the parameter count of MiniLM for no meaningful accuracy benefit at this dataset size (708 products). MiniLM is fast enough to rebuild the index from scratch in seconds during dev, which matters far more than marginal retrieval-quality gains here.
 
 ## Handing off to the MCP layer
 
@@ -76,4 +103,4 @@ retriever = RagRetriever()
 retriever.search(query, k=5, where=build_where(max_price=15, min_rating=4.0, brand="Method"))
 ```
 
-Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec.
+Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `model_number` as an extra field).

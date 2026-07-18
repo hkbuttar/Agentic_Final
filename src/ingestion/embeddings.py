@@ -1,18 +1,13 @@
-"""Swappable embedding backends, selected via EMBEDDING_PROVIDER env var
-so the pipeline stays model-agnostic per the project's LLM-choice requirement."""
-from abc import ABC, abstractmethod
-
-from config import EMBEDDING_PROVIDER, LOCAL_EMBEDDING_MODEL, OPENAI_EMBEDDING_MODEL
-
-
-class EmbeddingProvider(ABC):
-    @abstractmethod
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        ...
+"""Local embedding backend via sentence-transformers.
+Runs on-device (CPU/MPS/CUDA), no API key needed. Default model is
+all-MiniLM-L6-v2 (22M params, 384-dim) — small enough to embed the full
+slice in a few seconds; Qwen's own embedding line only goes down to 0.6B,
+which is much slower for no accuracy benefit at this dataset size."""
+from config import EMBEDDING_MODEL
 
 
-class LocalEmbedding(EmbeddingProvider):
-    def __init__(self, model_name: str = LOCAL_EMBEDDING_MODEL):
+class LocalEmbedding:
+    def __init__(self, model_name: str = EMBEDDING_MODEL):
         from sentence_transformers import SentenceTransformer
 
         self._model = SentenceTransformer(model_name)
@@ -21,21 +16,5 @@ class LocalEmbedding(EmbeddingProvider):
         return self._model.encode(texts, show_progress_bar=False, batch_size=64).tolist()
 
 
-class OpenAIEmbedding(EmbeddingProvider):
-    def __init__(self, model_name: str = OPENAI_EMBEDDING_MODEL):
-        from openai import OpenAI
-
-        self._client = OpenAI()
-        self._model_name = model_name
-
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        response = self._client.embeddings.create(model=self._model_name, input=texts)
-        return [item.embedding for item in response.data]
-
-
-def get_embedder(provider: str = EMBEDDING_PROVIDER) -> EmbeddingProvider:
-    if provider == "local":
-        return LocalEmbedding()
-    if provider == "openai":
-        return OpenAIEmbedding()
-    raise ValueError(f"unknown EMBEDDING_PROVIDER: {provider!r}")
+def get_embedder() -> LocalEmbedding:
+    return LocalEmbedding()

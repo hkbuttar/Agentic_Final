@@ -47,6 +47,7 @@ class RagRetriever:
                 "rating": meta["rating"] if meta["rating"] >= 0 else None,
                 "brand": meta["brand"] or None,
                 "ingredients": meta["ingredients"] or None,
+                "model_number": meta["model_number"] or None,
                 "doc_id": meta["doc_id"],
                 "score": 1 - distance,
             })

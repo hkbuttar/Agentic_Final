@@ -29,6 +29,7 @@ def _clean_metadata(row: pd.Series) -> dict:
         "brand": str(row["brand"]) if pd.notna(row.get("brand")) else "",
         "category": str(row["category"]) if pd.notna(row.get("category")) else "",
         "ingredients": str(row["ingredients"]) if pd.notna(row.get("ingredients")) else "",
+        "model_number": str(row["model_number"]) if pd.notna(row.get("model_number")) else "",
         "url": str(row["url"]) if pd.notna(row.get("url")) else "",
     }
     price = row.get("price")

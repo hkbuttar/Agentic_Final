@@ -1,9 +1,10 @@
 """Raw Amazon 2020 CSV -> data/processed/products.parquet.
 
-Column names in PromptCloud's Amazon exports vary slightly between dataset
-revisions, so target fields are resolved via an alias list rather than a
-fixed name. Run inspect_schema.py first and extend COLUMN_ALIASES below if a
-field comes back empty for your copy of the file.
+Column names below are the real headers in
+marketing_sample_for_amazon_com-ecommerce__20200101_20200131__10k_data.csv
+(confirmed via inspect_schema.py / notebooks/00_eda.ipynb). `Brand Name` and
+`Ingredients` are read but are 100% empty in this file; there is no rating
+column at all, so `rating` is left as None.
 """
 import re
 from typing import Optional
@@ -12,21 +13,17 @@ import pandas as pd
 
 from config import CATEGORY_TOP_LEVEL, PRODUCTS_PARQUET, RAW_DIR
 
-COLUMN_ALIASES: dict[str, list[str]] = {
-    "id": ["Uniq Id", "uniq_id", "Asin", "asin"],
-    "title": ["Product Name", "product_name", "title"],
-    "brand": ["Brand Name", "brand", "Manufacturer", "manufacturer"],
-    "category": ["Category", "category", "Amazon Category And Sub Category"],
-    "list_price": ["List Price", "list_price"],
-    "price": ["Selling Price", "selling_price", "Discounted Price", "price"],
-    "rating": ["Average Review Rating", "average_review_rating", "Rating", "rating"],
-    "num_reviews": ["Number Of Reviews", "number_of_reviews"],
-    "about": ["About Product", "about_product", "Product Description", "product_description"],
-    "spec": ["Product Specification", "product_specification", "Technical Details", "technical_details"],
-    "ingredients": ["Ingredients", "ingredients"],
-    "weight": ["Shipping Weight", "shipping_weight", "Item Weight", "item_weight"],
-    "url": ["Product Url", "product_url", "url"],
-}
+COL_ID = "Uniq Id"
+COL_TITLE = "Product Name"
+COL_BRAND = "Brand Name"
+COL_CATEGORY = "Category"
+COL_PRICE = "Selling Price"
+COL_ABOUT = "About Product"
+COL_TECH = "Technical Details"
+COL_MODEL = "Model Number"
+COL_INGREDIENTS = "Ingredients"
+COL_WEIGHT = "Shipping Weight"
+COL_URL = "Product Url"
 
 UNIT_PATTERN = re.compile(
     r"(?P<qty>\d+(?:\.\d+)?)\s*(?P<unit>fl\s?oz|fl\.\s?oz|oz|ounce|ounces|lb|lbs|pound|pounds|"
@@ -41,47 +38,36 @@ _UNIT_NORMALIZE = {
     "gallon": "gal", "liter": "l", "litre": "l",
 }
 
-
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [c.strip() for c in df.columns]
-    return df
-
-
-def _find_column(df: pd.DataFrame, candidates: list[str]) -> Optional[str]:
-    lower_map = {c.lower(): c for c in df.columns}
-    for cand in candidates:
-        if cand.lower() in lower_map:
-            return lower_map[cand.lower()]
-    return None
-
-
-def _resolve_columns(df: pd.DataFrame) -> dict[str, Optional[str]]:
-    resolved = {field: _find_column(df, aliases) for field, aliases in COLUMN_ALIASES.items()}
-    missing = [f for f, c in resolved.items() if c is None]
-    if missing:
-        print(f"warning: no source column found for fields {missing} "
-              f"(run inspect_schema.py and extend COLUMN_ALIASES if these matter)")
-    return resolved
+# Recur across most rows in About Product / Technical Details and add no
+# product-specific signal to the embedding text.
+_BOILERPLATE = [
+    "Make sure this fits by entering your model number.",
+    "Go to your orders and start the return Select the ship method Ship it!",
+]
 
 
 def _parse_price(value) -> Optional[float]:
+    """Selling Price is normally "$12.99". A handful of rows hold garbage
+    like "from 2 sellers" or free-text shipping blurbs — requiring the `$`
+    anchor keeps those out instead of grabbing an unrelated digit."""
     if pd.isna(value):
         return None
-    match = re.search(r"[\d,]+\.?\d*", str(value))
+    match = re.match(r"\s*\$\s*([\d,]+\.?\d*)", str(value))
     if not match:
         return None
     try:
-        return float(match.group().replace(",", ""))
+        return float(match.group(1).replace(",", ""))
     except ValueError:
         return None
 
 
-def _parse_rating(value) -> Optional[float]:
-    price = _parse_price(value)
-    if price is None:
-        return None
-    return price if price <= 5 else None
+def _clean_text(text: str) -> str:
+    text = text.replace("\xa0", " ").replace("|", ". ")
+    for phrase in _BOILERPLATE:
+        text = text.replace(phrase, "")
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^(\.\s*)+", "", text)
+    return re.sub(r"(\.\s*){2,}", ". ", text).strip()
 
 
 def _parse_unit(*text_fields: str) -> tuple[Optional[float], Optional[str]]:
@@ -98,6 +84,11 @@ def _parse_unit(*text_fields: str) -> tuple[Optional[float], Optional[str]]:
 
 
 def _matches_category(category_breadcrumb: str) -> bool:
+    """Category is a single `|`-delimited breadcrumb per row (top -> leaf),
+    not multiple category assignments — confirmed in notebooks/00_eda.ipynb
+    (no row uses a second delimiter like ';', '||', or repeats a top-level
+    segment; every Uniq Id appears exactly once). So matching the top-level
+    segment is a correct 1:1 category filter, not a lossy approximation."""
     top_level = category_breadcrumb.split("|")[0].strip().lower()
     return top_level == CATEGORY_TOP_LEVEL.lower()
 
@@ -107,33 +98,30 @@ def clean() -> pd.DataFrame:
     if not csv_files:
         raise FileNotFoundError(f"No CSV files in {RAW_DIR}. Run download_data.py first.")
 
-    frames = [_normalize_columns(pd.read_csv(path, low_memory=False)) for path in csv_files]
-    raw = pd.concat(frames, ignore_index=True)
-    cols = _resolve_columns(raw)
+    raw = pd.concat([pd.read_csv(path, low_memory=False) for path in csv_files], ignore_index=True)
 
     out = pd.DataFrame()
-    out["id"] = raw[cols["id"]] if cols["id"] else raw.index.astype(str)
-    out["title"] = raw[cols["title"]] if cols["title"] else None
-    out["brand"] = raw[cols["brand"]] if cols["brand"] else None
-    out["category"] = raw[cols["category"]] if cols["category"] else None
-    out["price"] = raw[cols["price"]].map(_parse_price) if cols["price"] else None
-    out["rating"] = raw[cols["rating"]].map(_parse_rating) if cols["rating"] else None
-    out["about"] = raw[cols["about"]] if cols["about"] else None
-    out["spec"] = raw[cols["spec"]] if cols["spec"] else None
-    out["ingredients"] = raw[cols["ingredients"]] if cols["ingredients"] else None
-    weight_col = raw[cols["weight"]] if cols["weight"] else pd.Series([None] * len(raw))
-    out["url"] = raw[cols["url"]] if cols["url"] else None
+    out["id"] = raw[COL_ID]
+    out["title"] = raw[COL_TITLE].fillna("").astype(str)
+    out["brand"] = raw[COL_BRAND]
+    out["category"] = raw[COL_CATEGORY].fillna("").astype(str)
+    out["price"] = raw[COL_PRICE].map(_parse_price)
+    out["rating"] = None
+    out["ingredients"] = raw[COL_INGREDIENTS]
+    out["model_number"] = raw[COL_MODEL]
+    out["url"] = raw[COL_URL]
 
-    out["title"] = out["title"].fillna("").astype(str)
-    out["category"] = out["category"].fillna("").astype(str)
-    out["about"] = out["about"].fillna("").astype(str)
+    about = raw[COL_ABOUT].fillna("").astype(str)
+    tech = raw[COL_TECH].fillna("").astype(str)
+    weight = raw[COL_WEIGHT]
 
-    out = out[out["category"].map(_matches_category)].reset_index(drop=True)
+    mask = out["category"].map(_matches_category)
+    out = out[mask].reset_index(drop=True)
+    about = about[mask].reset_index(drop=True)
+    tech = tech[mask].reset_index(drop=True)
+    weight = weight[mask].reset_index(drop=True)
 
-    units = [
-        _parse_unit(title, weight, about)
-        for title, weight, about in zip(out["title"], weight_col.reindex(out.index), out["about"])
-    ]
+    units = [_parse_unit(title, w, a) for title, w, a in zip(out["title"], weight, about)]
     out["unit_qty"] = [u[0] for u in units]
     out["unit"] = [u[1] for u in units]
     out["price_per_unit"] = out.apply(
@@ -143,10 +131,8 @@ def clean() -> pd.DataFrame:
         axis=1,
     )
 
-    out["features"] = (out["about"].fillna("") + " " + out["spec"].fillna("")).str.strip()
-    out = out.drop(columns=["about", "spec"])
+    out["features"] = [_clean_text(a + ". " + t) for a, t in zip(about, tech)]
 
-    out = out.dropna(subset=["title"])
     out = out[out["title"].str.len() > 0]
     out = out.drop_duplicates(subset=["id"]).reset_index(drop=True)
     out["doc_id"] = out["id"]

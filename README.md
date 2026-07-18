@@ -6,7 +6,6 @@ raw Kaggle dump into a Chroma vector index that the `rag.search` MCP tool querie
 ## Setup
 
 ```bash
-cd final_project
 pip install -r requirements.txt
 cp .env.example .env   # defaults to local embeddings, no API key needed
 ```

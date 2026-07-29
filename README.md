@@ -101,14 +101,25 @@ React/JS root.
 │   │   ├── rate_limit.py          # sliding-window rate limiter
 │   │   ├── log_utils.py           # request/response logging (no secrets)
 │   │   └── README.md              # tool schemas (Checkpoint 2 deliverable)
-│   ├── agents/                    # LangGraph nodes: router, planner, retriever, answerer/critic
+│   ├── agents/                     # LangGraph nodes: router, planner, retriever, answerer/critic
+│   │   ├── graph.py                # builds/compiles the StateGraph
+│   │   ├── state.py                # AgentState / Intent / Plan / Citation TypedDicts
+│   │   ├── router.py               # transcript -> intent (forced tool call)
+│   │   ├── planner.py              # intent -> plan (forced tool call)
+│   │   ├── retriever.py            # plan -> evidence (rag.search + web.search via MCP client)
+│   │   ├── answerer.py             # evidence -> answer + citations (forced tool call, grounding filter)
+│   │   ├── llm_client.py           # single Claude API wrapper — swap providers here only
+│   │   ├── mcp_client.py           # spawns src/mcp_server/server.py over stdio
+│   │   ├── config.py               # agent env/config (ANTHROPIC_API_KEY, LLM_MODEL, ...)
+│   │   ├── main.py                 # CLI entrypoint for one end-to-end query
+│   │   └── README.md               # architecture diagram (Checkpoint 2 deliverable)
 │   ├── asr/                       # Whisper / faster-whisper integration
 │   └── tts/                       # Azure Speech integration
 ├── notebooks/
 │   ├── 00_eda.ipynb              # exploratory analysis justifying ingestion choices
 │   └── 01_data_ingestion.ipynb   # step-through version of the pipeline
 ├── frontend/                     # React UI (mic capture, transcript, comparison table)
-├── prompts/                      # System, router, planner prompts + few-shot examples
+├── prompts/                      # System prompts for router/planner/answerer (read directly by src/agents)
 ├── data/
 │   ├── raw/                      # raw Kaggle CSV(s)
 │   ├── processed/                # products.parquet
@@ -254,6 +265,25 @@ python server.py
 
 Full tool schemas, config, and enforcement details: [src/mcp_server/README.md](src/mcp_server/README.md).
 
+## Agent Graph
+
+LangGraph state graph (`langgraph==1.2.10`) implementing the
+Router → Planner → Retriever → Answerer/Critic flow from
+[System Architecture](#system-architecture). Router/Planner/Answerer call
+Claude (`anthropic==0.120.2`) through a single `llm_client` module, forcing
+structured output via native tool-calling; the Retriever never calls a
+search API directly — it talks only to the [MCP Server](#mcp-server) as a
+client, over the same `rag.search`/`web.search` tools.
+
+```bash
+cd src/agents
+python main.py "eco-friendly stainless steel cleaner under fifteen dollars"
+```
+
+Full graph diagram, grounding-enforcement details, and prompt mapping:
+[src/agents/README.md](src/agents/README.md). System prompts themselves are
+in [prompts/](prompts/), per [Prompt Disclosure](#prompt-disclosure).
+
 ## Safety Notes
 
 - Domain allowlist enforced for `web.search`
@@ -271,4 +301,15 @@ Full tool schemas, config, and enforcement details: [src/mcp_server/README.md](s
 
 ## Prompt Disclosure
 
-All key prompts — system prompts, router/planner tool prompts, and few-shot examples — are included in the `prompts/` folder, mapped to the LangGraph nodes and MCP tools that use them.
+All key prompts are in `prompts/`, mapped to the LangGraph node that reads
+them (each node loads its prompt file directly at import time — the file
+*is* the runtime prompt, not a copy kept in sync by hand):
+
+| file | node |
+|---|---|
+| `router_system.md` | `src/agents/router.py` |
+| `planner_system.md` | `src/agents/planner.py` |
+| `answerer_system.md` | `src/agents/answerer.py` |
+
+The Retriever (`src/agents/retriever.py`) makes no LLM calls, so it has no
+prompt file — it only calls `rag.search`/`web.search` via the MCP client.

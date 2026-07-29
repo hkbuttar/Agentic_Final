@@ -8,3 +8,5 @@ tqdm
 matplotlib
 mcp==2.0.0
 requests
+langgraph==1.2.10
+anthropic==0.120.2

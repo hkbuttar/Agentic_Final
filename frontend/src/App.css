@@ -1,0 +1,170 @@
+.app {
+  flex: 1;
+  padding: 32px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+header {
+  text-align: left;
+}
+
+header h1 {
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--text);
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  text-align: left;
+}
+
+.input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recorder {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.manual-form {
+  display: flex;
+  gap: 8px;
+}
+
+.manual-form input[type="text"] {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.btn {
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  color: var(--accent);
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-secondary {
+  color: var(--text-h);
+  background: var(--code-bg);
+  border-color: var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--text);
+}
+
+.btn-recording {
+  color: #fff;
+  background: #e5484d;
+  border-color: #e5484d;
+}
+
+.file-upload {
+  display: inline-flex;
+  align-items: center;
+}
+
+.status {
+  color: var(--text);
+  font-style: italic;
+}
+
+.error {
+  color: #e5484d;
+}
+
+.trace {
+  margin: 0;
+  padding-left: 20px;
+  font-family: var(--mono);
+  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+td:first-child {
+  white-space: normal;
+  min-width: 220px;
+}
+
+.answer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.answer-text {
+  font-size: 18px;
+  line-height: 145%;
+  color: var(--text-h);
+}
+
+.citations {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.doc-id {
+  font-family: var(--mono);
+  font-size: 12px;
+}

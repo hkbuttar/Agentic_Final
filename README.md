@@ -117,13 +117,25 @@ React/JS root.
 │   ├── asr/                       # Whisper / faster-whisper integration
 │   │   ├── transcribe.py          # audio file -> Transcript (text, language, timestamped segments)
 │   │   └── config.py              # WHISPER_MODEL_SIZE / WHISPER_DEVICE / WHISPER_COMPUTE_TYPE
-│   └── tts/                       # Azure Speech integration
-│       ├── synthesize.py          # text -> WAV file via Azure Speech
-│       └── config.py              # AZURE_SPEECH_KEY / AZURE_SPEECH_REGION / AZURE_SPEECH_VOICE
+│   ├── tts/                        # Azure Speech integration
+│   │   ├── synthesize.py           # text -> WAV file via Azure Speech
+│   │   └── config.py               # AZURE_SPEECH_KEY / AZURE_SPEECH_REGION / AZURE_SPEECH_VOICE
+│   └── api/                        # FastAPI backend for the frontend
+│       ├── app.py                  # GET /health, POST /transcribe, /query, /speak
+│       ├── config.py                # API_HOST / API_PORT / API_CORS_ORIGINS
+│       └── README.md                # endpoint schemas
 ├── notebooks/
 │   ├── 00_eda.ipynb              # exploratory analysis justifying ingestion choices
 │   └── 01_data_ingestion.ipynb   # step-through version of the pipeline
-├── frontend/                     # React UI (mic capture, transcript, comparison table)
+├── frontend/                     # React (Vite) UI — mic capture, transcript, comparison table
+│   └── src/
+│       ├── App.jsx                # orchestrates the record -> transcribe -> query -> answer flow
+│       ├── api.js                 # fetch wrappers for src/api's three endpoints
+│       └── components/
+│           ├── Recorder.jsx       # mic capture (record) + file upload
+│           ├── AgentTrace.jsx     # agent step log
+│           ├── ComparisonTable.jsx # evidence table
+│           └── AnswerPanel.jsx    # answer text, citations, Play TTS button
 ├── prompts/                      # System prompts for router/planner/answerer (read directly by src/agents)
 ├── data/
 │   ├── raw/                      # raw Kaggle CSV(s)
@@ -313,6 +325,55 @@ name, matching `src/ingestion`'s convention); `voice_main.py` loads both
 into the `src/agents` process without them colliding, the same way
 `src/mcp_server/rag_tool.py` loads `src/ingestion` — see that file's
 docstring for why a plain `sys.path` insert isn't enough here.
+
+## Backend API
+
+FastAPI service (`src/api/app.py`) exposing ASR → agent graph → TTS over
+HTTP, so the [frontend](#user-interface) has something to call — `main.py`/
+`voice_main.py` are CLI-only. Endpoints map 1:1 to the UI feature list:
+mic upload → `POST /transcribe`, live transcript/agent step log/comparison
+table/citations → `POST /query`, "Play TTS" button → `POST /speak`.
+
+```bash
+cd src/api
+python app.py
+```
+
+The agent graph and its MCP client are built once at startup (FastAPI
+`lifespan`) and reused across requests. Full endpoint schemas:
+[src/api/README.md](src/api/README.md).
+
+## Frontend
+
+React (Vite) app in `frontend/`, calling [Backend API](#backend-api) via
+`fetch`. Each component maps to one item in the
+[User Interface](#user-interface) feature list:
+
+| Feature | Component |
+|---|---|
+| Mic capture (record/upload) | `Recorder.jsx` — `MediaRecorder` for recording, a file input as a fallback |
+| Live transcript | `App.jsx` — shown as soon as `/transcribe` returns |
+| Agent step log | `AgentTrace.jsx` — renders `/query`'s `trace` array |
+| Comparison table | `ComparisonTable.jsx` — renders `/query`'s `evidence` array |
+| Citations | `AnswerPanel.jsx` |
+| Play TTS button | `AnswerPanel.jsx` — calls `/speak` only when clicked, not automatically |
+
+`App.jsx` also accepts typed text as an alternative to voice (skips
+`/transcribe`, goes straight to `/query`) — useful for testing without a
+working microphone.
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # set VITE_API_BASE_URL if the API isn't on localhost:8080
+npm run dev
+```
+
+Requires [Backend API](#backend-api) running separately. `VITE_API_BASE_URL`
+must be in `API_CORS_ORIGINS` (`.env` at the repo root) for the browser to
+be allowed to call it — verified directly: a `POST /query` from origin
+`http://localhost:5173` (Vite's default dev port, `API_CORS_ORIGINS`'s
+default) returns `access-control-allow-origin: http://localhost:5173`.
 
 ## Safety Notes
 

@@ -111,10 +111,15 @@ React/JS root.
 │   │   ├── llm_client.py           # single Claude API wrapper — swap providers here only
 │   │   ├── mcp_client.py           # spawns src/mcp_server/server.py over stdio
 │   │   ├── config.py               # agent env/config (ANTHROPIC_API_KEY, LLM_MODEL, ...)
-│   │   ├── main.py                 # CLI entrypoint for one end-to-end query
+│   │   ├── main.py                 # CLI entrypoint for one end-to-end (text) query
+│   │   ├── voice_main.py           # CLI entrypoint: audio in -> ASR -> graph -> TTS -> audio out
 │   │   └── README.md               # architecture diagram (Checkpoint 2 deliverable)
 │   ├── asr/                       # Whisper / faster-whisper integration
+│   │   ├── transcribe.py          # audio file -> Transcript (text, language, timestamped segments)
+│   │   └── config.py              # WHISPER_MODEL_SIZE / WHISPER_DEVICE / WHISPER_COMPUTE_TYPE
 │   └── tts/                       # Azure Speech integration
+│       ├── synthesize.py          # text -> WAV file via Azure Speech
+│       └── config.py              # AZURE_SPEECH_KEY / AZURE_SPEECH_REGION / AZURE_SPEECH_VOICE
 ├── notebooks/
 │   ├── 00_eda.ipynb              # exploratory analysis justifying ingestion choices
 │   └── 01_data_ingestion.ipynb   # step-through version of the pipeline
@@ -283,6 +288,31 @@ python main.py "eco-friendly stainless steel cleaner under fifteen dollars"
 Full graph diagram, grounding-enforcement details, and prompt mapping:
 [src/agents/README.md](src/agents/README.md). System prompts themselves are
 in [prompts/](prompts/), per [Prompt Disclosure](#prompt-disclosure).
+
+## Voice Pipeline
+
+Fragment-based (record/upload → transcribe; synthesize → play), per
+[System Architecture](#system-architecture):
+
+- **`src/asr/transcribe.py`** — Whisper via `faster-whisper` (`WHISPER_MODEL_SIZE`
+  in `.env`, default `small`). Language is auto-detected, not forced. Returns
+  full text plus timestamped segments.
+- **`src/tts/synthesize.py`** — Azure Speech (`AZURE_SPEECH_KEY`/`AZURE_SPEECH_REGION`/
+  `AZURE_SPEECH_VOICE` in `.env`). Synthesizes to a WAV file; the caller
+  decides how to play it back.
+- **`src/agents/voice_main.py`** — ties both to the [Agent Graph](#agent-graph):
+  audio in → `transcribe()` → graph → `synthesize()` → audio out.
+
+```bash
+cd src/agents
+python voice_main.py path/to/question.wav response.wav
+```
+
+`src/asr` and `src/tts` each have their own `config.py` (bare-imported by
+name, matching `src/ingestion`'s convention); `voice_main.py` loads both
+into the `src/agents` process without them colliding, the same way
+`src/mcp_server/rag_tool.py` loads `src/ingestion` — see that file's
+docstring for why a plain `sys.path` insert isn't enough here.
 
 ## Safety Notes
 

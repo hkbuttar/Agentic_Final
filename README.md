@@ -78,43 +78,58 @@ Full ingestion pipeline, schema decisions, and known data-quality caveats are do
 
 ## Repository Structure
 
+All Python code lives under `src/` (src-layout); `frontend/` is the separate
+React/JS root.
+
 ```
 .
-├── agents/                       # LangGraph nodes: router, planner, retriever, answerer/critic
-├── mcp_server/                   # MCP server exposing web.search and rag.search tools
 ├── src/
-│   └── ingestion/
-│       ├── download_data.py      # Kaggle -> data/raw/*.csv
-│       ├── inspect_schema.py     # confirms raw column names/dtypes
-│       ├── clean.py              # data/raw -> data/processed/products.parquet
-│       ├── build_index.py        # products.parquet -> data/chroma_db/
-│       ├── embeddings.py         # sentence-transformers wrapper (all-MiniLM-L6-v2)
-│       └── retriever.py          # RagRetriever.search() — imported by rag.search
+│   ├── ingestion/
+│   │   ├── download_data.py      # Kaggle -> data/raw/*.csv
+│   │   ├── inspect_schema.py     # confirms raw column names/dtypes
+│   │   ├── clean.py              # data/raw -> data/processed/products.parquet
+│   │   ├── build_index.py        # products.parquet -> data/chroma_db/
+│   │   ├── embeddings.py         # sentence-transformers wrapper (all-MiniLM-L6-v2)
+│   │   ├── retriever.py          # RagRetriever.search() — imported by rag.search
+│   │   └── config.py             # ingestion env/config (CHROMA_DIR, CATEGORY_TOP_LEVEL, ...)
+│   ├── mcp_server/                # MCP server exposing web.search and rag.search tools
+│   │   ├── server.py              # registers both tools, runs stdio/sse/streamable-http
+│   │   ├── rag_tool.py            # wraps src/ingestion's RagRetriever
+│   │   ├── web_tool.py            # Serper/Brave + domain allowlist + robots.txt + cache + rate limit
+│   │   ├── config.py              # MCP server env/config
+│   │   ├── cache.py               # in-process TTL cache
+│   │   ├── rate_limit.py          # sliding-window rate limiter
+│   │   ├── log_utils.py           # request/response logging (no secrets)
+│   │   └── README.md              # tool schemas (Checkpoint 2 deliverable)
+│   ├── agents/                    # LangGraph nodes: router, planner, retriever, answerer/critic
+│   ├── asr/                       # Whisper / faster-whisper integration
+│   └── tts/                       # Azure Speech integration
 ├── notebooks/
 │   ├── 00_eda.ipynb              # exploratory analysis justifying ingestion choices
 │   └── 01_data_ingestion.ipynb   # step-through version of the pipeline
-├── asr/                          # Whisper / faster-whisper integration
-├── tts/                          # Azure Speech integration
 ├── frontend/                     # React UI (mic capture, transcript, comparison table)
 ├── prompts/                      # System, router, planner prompts + few-shot examples
 ├── data/
 │   ├── raw/                      # raw Kaggle CSV(s)
 │   ├── processed/                # products.parquet
 │   └── chroma_db/                # persistent Chroma collection
+├── logs/
+│   └── mcp_requests.log          # MCP tool call log (timestamp, tool, query, doc_ids/source_urls)
+├── requirements.txt
 ├── .env.example
 └── README.md
 ```
 
 ## Setup
 
-1. Clone the repository and install dependencies for the backend (`agents/`, `mcp_server/`, `asr/`, `tts/`) and frontend (`frontend/`).
+1. Clone the repository and install dependencies for the backend (`src/agents/`, `src/mcp_server/`, `src/asr/`, `src/tts/` — one `requirements.txt` at the repo root covers all of `src/`) and frontend (`frontend/`).
 2. Copy `.env.example` to `.env` and populate:
    - LLM provider + API key (Claude API)
    - Web search API key (Serper.dev or Brave Search API)
    - Azure Speech credentials
    - Vector DB / category config (see [Data Ingestion](#data-ingestion))
 3. Run the data ingestion pipeline (below) to build the Chroma index from the Amazon 2020 dataset slice.
-4. Start the MCP server (stdio or HTTP/SSE).
+4. Start the MCP server (stdio or HTTP/SSE) — see [MCP Server](#mcp-server).
 5. Start the backend agent graph service and the React frontend.
 6. Record or upload a voice query in the UI to trigger the full pipeline.
 
@@ -223,6 +238,21 @@ retriever.search(query, k=5, where=build_where(max_price=15, min_rating=4.0, bra
 ```
 
 Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `model_number` as an extra field).
+
+## MCP Server
+
+Built with the MCP Python SDK (`mcp==2.0.0`), exposing `rag.search` (wraps
+`RagRetriever` from [Data Ingestion](#data-ingestion)) and `web.search`
+(Serper.dev or Brave, domain-allowlisted, `robots.txt`-respecting, cached,
+rate-limited) to the LangGraph agent graph. Runs over stdio by default, or
+HTTP (SSE / streamable-http) via `.env`.
+
+```bash
+cd src/mcp_server
+python server.py
+```
+
+Full tool schemas, config, and enforcement details: [src/mcp_server/README.md](src/mcp_server/README.md).
 
 ## Safety Notes
 

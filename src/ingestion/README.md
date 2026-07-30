@@ -58,7 +58,7 @@ deploy host rebuilds the index from it at build time (`python build_index.py`,
 
 ## Schema
 
-`products.parquet` columns: `id, title, brand, category, category_top_level, price, rating, ingredients, model_number, features, unit_qty, unit, price_per_unit, url, doc_id`.
+`products.parquet` columns: `id, title, brand, brand_inferred, category, category_top_level, price, rating, ingredients, model_number, features, unit_qty, unit, price_per_unit, url, doc_id`.
 
 `doc_id` is the stable citation key used by the Answerer agent and surfaced in the UI's citation panel.
 
@@ -71,6 +71,7 @@ deploy host rebuilds the index from it at build time (`python build_index.py`,
 | `id` | `Uniq Id` |
 | `title` | `Product Name` |
 | `brand` | `Brand Name` (always empty — see below) |
+| `brand_inferred` | derived from `Product Name`'s first word — a heuristic guess, not real data (see [Brand inference](#brand-inference)) |
 | `category` | `Category` (full `|`-delimited breadcrumb, kept as-is) |
 | `category_top_level` | derived from `Category` — just the first breadcrumb segment (see [Category organization](#category-organization)) |
 | `price` | `Selling Price` ($-anchored parse — see below) |
@@ -95,12 +96,39 @@ The pipeline indexes every row — it no longer filters down to one category at 
 
 *(Earlier iterations of this project pre-filtered to a single category at ingestion time — first considered "Household Cleaning" per the original spec, rejected since only 23 rows fall under Health & Household at all and just 7 mention "cleaning" anywhere in their breadcrumb, then settled on Home & Kitchen as the best-populated fit. Indexing everything and filtering at query time instead makes that tradeoff moot — every category is available, and a query can still scope to Home & Kitchen via `category="Home & Kitchen"` if that's what's relevant.)*
 
+## Brand inference
+
+`Brand Name` is 100% empty in the raw file (see
+[Known data-quality limitations](#known-data-quality-limitations)), but
+many titles *do* start with the actual brand ("Melissa & Doug Wooden
+Jigsaw Puzzle...", "KidKusion Gummi Teething Necklace..."). `_infer_brand`
+in `clean.py` takes a conservative guess: the title's first word, unless
+it looks like a number or a generic descriptor (`the`, `new`, `kids`,
+etc.), in which case it returns `None` rather than guess.
+
+**Deliberately single-word, even for real multi-word brands** ("Melissa &
+Doug" → `"Melissa"`, "Achim Home Furnishings" → `"Achim"`). Tested a
+2-3 word version first — it reliably grabbed unrelated descriptive words
+for single-word brands ("Ceaco Perfect Piece Count Puzzle" →
+`"Ceaco Perfect Piece"`, "AMSCAN Inmate Convict Prisoner..." →
+`"AMSCAN Inmate Convict"`), which is a worse failure mode than
+under-extracting: a truncated-but-correct guess is more useful than a
+confidently wrong longer one.
+
+**Kept as a separate `brand_inferred` field, never merged into `brand`.**
+`brand` stays `None`/empty exactly as it is in the source data. Every
+layer downstream — `rag.search`'s output, the Answerer's prompt, the
+frontend's comparison table — treats `brand_inferred` as a labeled guess,
+never as verified data. This isn't optional polish: presenting a guess as
+a confirmed brand is exactly the kind of fabrication the top-level
+README's Safety Notes are about avoiding.
+
 ## Known data-quality limitations
 
 Confirmed against the real downloaded file — worth stating explicitly in the writeup/safety notes:
 
-- **Brand Name and Ingredients are 100% empty** across all 10,002 rows. The Answerer agent should not claim brand or ingredient facts for these products; `retriever.py` already returns `None` for both rather than fabricating a value.
-- **No rating/review-count column exists** in this file at all (`clean.py` leaves `rating` as `None`). If the team wants ratings for the demo, either source a `reviews.parquet` from a different PromptCloud file or drop rating-based comparisons from the example queries.
+- **Brand Name and Ingredients are 100% empty** across all 10,002 rows. The Answerer agent should not claim brand or ingredient facts for these products; `retriever.py` already returns `None` for both rather than fabricating a value. (`brand_inferred` is a heuristic guess derived from the title, kept as a separate field — see [Brand inference](#brand-inference) — not a fix for this.)
+- **No rating/review-count column exists** in this file at all (`clean.py` leaves `rating` as `None`), and unlike brand there's no title-text heuristic that could stand in for it — a rating isn't embedded in a product's name the way a brand sometimes is. If the team wants ratings for the demo, either source a `reviews.parquet` from a different PromptCloud file or drop rating-based comparisons from the example queries.
 - **Selling Price has ~4% garbage values** dataset-wide ("from 2 sellers", "Total price:", free-text shipping blurbs, "$8.25 - $31.95" ranges). `_parse_price` requires the value to start with `$` before extracting a number — this matters: an earlier, unanchored version of the parser mis-read "from 2 sellers" as $2.00 and pulled a random $5 out of an unrelated shipping-policy sentence. For genuine ranges ("$8.25 - $31.95"), the low end is used as the representative price.
 - **`price_per_unit` is only derived when a quantity+unit** (oz, lb, ct, etc.) is parseable from the title/weight/description text — 8,838 of 10,002 rows (88%). `price` itself is populated for 9,839/10,002 (98%).
 - **`category_top_level` is empty for 830 rows** (8%) where the raw `Category` value is blank — those rows are still embedded and searchable, they just won't match a `category` filter.

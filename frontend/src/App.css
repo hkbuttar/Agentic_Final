@@ -122,6 +122,12 @@ header h1 {
   overflow-x: auto;
 }
 
+.inferred {
+  font-style: italic;
+  color: var(--text);
+  cursor: help;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

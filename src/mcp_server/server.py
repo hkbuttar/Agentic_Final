@@ -29,11 +29,13 @@ def rag_search_tool(
     against the top-level category (e.g. "Home & Kitchen", "Toys & Games")
     — pass it when the user's request names or clearly implies a category,
     omit it to search across all categories. Returns up to k ranked hits:
-    {sku, title, price, rating, brand, category, category_top_level,
-    ingredients, model_number, url, doc_id, score}. `ingredients`, `rating`,
-    and `brand` are None for every product in this catalog (see top-level
-    README's Known data-quality limitations) — do not treat None as
-    "value unknown, ask again."
+    {sku, title, price, rating, brand, brand_inferred, category,
+    category_top_level, ingredients, model_number, url, doc_id, score}.
+    `ingredients`, `rating`, and `brand` are None for every product in this
+    catalog (see top-level README's Known data-quality limitations) — do
+    not treat None as "value unknown, ask again." `brand_inferred` is a
+    heuristic guess from the title, not verified data — never state it as
+    a confirmed fact.
     """
     return rag_search(query, max_price=max_price, min_rating=min_rating, brand=brand, category=category, k=k)
 

@@ -3,7 +3,9 @@ tool should import and call directly — its return shape matches the
 {sku, title, price, rating, brand, ingredients, doc_id} contract the
 Retriever/Answerer agents expect for citations, plus category/
 category_top_level so results can be organized/filtered by category over
-the full (unfiltered-at-ingestion) product set.
+the full (unfiltered-at-ingestion) product set, and brand_inferred — a
+heuristic guess, never to be treated the same as the (always-empty) real
+`brand` field. See clean.py's _infer_brand for the heuristic itself.
 """
 from typing import Optional
 
@@ -51,6 +53,7 @@ class RagRetriever:
                 "price": meta["price"] if meta["price"] >= 0 else None,
                 "rating": meta["rating"] if meta["rating"] >= 0 else None,
                 "brand": meta["brand"] or None,
+                "brand_inferred": meta["brand_inferred"] or None,
                 "category": meta["category"] or None,
                 "category_top_level": meta["category_top_level"] or None,
                 "ingredients": meta["ingredients"] or None,

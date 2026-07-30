@@ -15,11 +15,11 @@ export async function transcribeAudio(blob) {
   return parseJsonOrThrow(response);
 }
 
-export async function runQuery(transcript) {
+export async function runQuery(transcript, history = []) {
   const response = await fetch(`${API_BASE_URL}/query`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ transcript }),
+    body: JSON.stringify({ transcript, history }),
   });
   return parseJsonOrThrow(response);
 }

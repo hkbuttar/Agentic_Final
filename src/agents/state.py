@@ -17,6 +17,7 @@ class Intent(TypedDict):
     category: Optional[str]  # one of the catalog's known top-level categories, or None
     wants_live_data: bool
     safety_flags: list[str]
+    is_followup_on_existing_results: bool  # see Router's system prompt + Retriever's history branch
 
 
 class Plan(TypedDict):
@@ -31,8 +32,16 @@ class Citation(TypedDict):
     url: Optional[str]
 
 
+class HistoryTurn(TypedDict):
+    transcript: str
+    intent: Intent
+    evidence: list[dict]
+    answer: str
+
+
 class AgentState(TypedDict, total=False):
     transcript: str
+    history: list[HistoryTurn]  # prior turns in this conversation, oldest first; see Router's system prompt
     intent: Intent
     plan: Plan
     evidence: list[dict]

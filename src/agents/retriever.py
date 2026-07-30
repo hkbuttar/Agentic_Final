@@ -7,6 +7,10 @@ relevance (see below) — despite the "Retriever" name being from a
 non-LLM-node era of this file, that judgment call is unavoidable.
 
 Routing behavior:
+0. If the Router flagged this as a pure follow-up selection over already-
+   shown results ("the cheapest one"), skip straight to reusing the
+   previous turn's evidence — no rag.search/web.search call at all. See
+   the `is_followup_on_existing_results` branch below.
 1. rag.search, scoped to intent.category (if any) and constraints.
 2. Relevance check (see prompts/retriever_system.md): do any of the
    private hits actually match the *specific product type* requested, not
@@ -75,6 +79,21 @@ async def run(state: AgentState, mcp_client: MCPToolClient, llm: LLMClient) -> d
     plan = state["plan"]
     constraints = intent.get("constraints", {})
     category = intent.get("category")
+
+    # Pure follow-up selection over what's already on screen ("the cheapest
+    # one") — the Router already resolved this (see router_system.md) and
+    # there's nothing a fresh rag.search/web.search would improve: reusing
+    # the exact evidence the user already saw is more correct than
+    # re-querying, since neither search is guaranteed to return the same
+    # results twice (rag.search's underlying data doesn't change turn to
+    # turn, but web.search's does, and Shopping search is documented
+    # elsewhere in this codebase as flaky even for identical queries).
+    if intent.get("is_followup_on_existing_results"):
+        history = state.get("history") or []
+        prior_evidence = history[-1]["evidence"] if history else []
+        trace = state.get("trace", [])
+        trace.append(f"retriever: reused {len(prior_evidence)} evidence items from the previous turn (follow-up)")
+        return {"evidence": prior_evidence, "trace": trace}
 
     private_hits: list[dict] = await mcp_client.rag_search(
         intent["task"],

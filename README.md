@@ -213,6 +213,12 @@ Retriever never calls a search API directly, though — it talks only to the
 [MCP Server](#mcp-server) as a client, over the same `rag.search`/`web.search`
 tools.
 
+The graph also supports follow-ups: the Router resolves a follow-up
+against the conversation's prior turns (see
+[src/agents/README.md](src/agents/README.md#graph)'s Follow-ups note),
+and a pure selection over already-shown results ("the cheapest one")
+skips retrieval entirely rather than re-querying.
+
 ```bash
 cd src/agents
 python main.py "eco-friendly stainless steel cleaner under fifteen dollars"
@@ -309,6 +315,14 @@ React (Vite) app in `frontend/`, calling [Backend API](#backend-api) via
 `App.jsx` also accepts typed text as an alternative to voice (skips
 `/transcribe`, goes straight to `/query`) — useful for testing without a
 working microphone.
+
+**Follow-ups**: `App.jsx` keeps the last few turns (transcript, intent,
+evidence, answer) and sends them along with `/query` as `history`, so a
+follow-up asked through the exact same mic/text input ("the cheapest
+one", "what about under $10") is resolved against the previous turn
+instead of starting from nothing — see [Agent Graph](#agent-graph)'s
+Follow-ups note for how the Router/Retriever handle it. "New Question"
+clears the conversation and starts fresh.
 
 ```bash
 cd frontend

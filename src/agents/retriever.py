@@ -86,17 +86,26 @@ async def run(state: AgentState, mcp_client: MCPToolClient, llm: LLMClient) -> d
     for hit in private_hits:
         hit["source"] = "private"
 
-    evidence: list[dict] = list(private_hits)
-
     private_satisfactory, relevance_reason = await _judge_relevance(llm, intent["task"], private_hits)
-    need_web = not private_satisfactory or "live" in plan.get("sources", [])
+    wants_live = "live" in plan.get("sources", [])
+    need_web = not private_satisfactory or wants_live
+
+    # Rejected private hits don't count as evidence — the relevance check
+    # already determined they don't answer the request, so keeping them
+    # around would let a known mismatch slip into the Answerer's context
+    # (caught by src/eval: a "no evidence anywhere" case still had 6 private
+    # evidence items — rejected candidates that were never actually removed).
+    # Satisfactory private hits are kept regardless of whether we also fetch
+    # live data (wants_live_data queries want both, for current-price
+    # comparison against a genuinely good private match).
+    evidence: list[dict] = list(private_hits) if private_satisfactory else []
 
     if need_web:
         live_hits: list[dict] = await mcp_client.web_search(intent["task"], k=5)
         for hit in live_hits:
             hit["source"] = "live"
             reconciled: Optional[dict] = next(
-                (p for p in private_hits if _titles_match(p["title"], hit.get("title") or "")),
+                (p for p in private_hits if private_satisfactory and _titles_match(p["title"], hit.get("title") or "")),
                 None,
             )
             if reconciled is not None:
@@ -105,7 +114,7 @@ async def run(state: AgentState, mcp_client: MCPToolClient, llm: LLMClient) -> d
                 evidence.append(hit)
 
     trace = state.get("trace", [])
-    reason = "plan wants live data" if "live" in plan.get("sources", []) else relevance_reason if need_web else None
+    reason = "plan wants live data" if wants_live else relevance_reason if need_web else None
     trace_msg = f"retriever: {len(evidence)} evidence items (category={category!r}"
     trace_msg += f", web fallback: {reason})" if need_web else ")"
     trace.append(trace_msg)

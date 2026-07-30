@@ -49,13 +49,23 @@ final answer, and grounded citations.
 ## Native tool/function calling
 
 Every LLM call goes through `llm_client.LLMClient.call_tool`, which forces
-the model to respond via a single named tool (`tool_choice={"type": "tool",
-"name": ...}`) instead of free text — so Router/Planner/Answerer output is
-always valid, schema-shaped JSON, not something to be parsed out of prose.
-This is on top of (not instead of) the `rag.search` / `web.search` tool
-calls the Retriever makes against the MCP server — both are "native
-tool/function calling" per the top-level README's LLM & Configuration
-section.
+the model to respond via a single named tool instead of free text — so
+Router/Planner/Retriever(relevance)/Answerer output is always valid,
+schema-shaped JSON, not something to be parsed out of prose. This is on
+top of (not instead of) the `rag.search` / `web.search` tool calls the
+Retriever makes against the MCP server — both are "native tool/function
+calling" per the top-level README's LLM & Configuration section.
+
+**Provider-agnostic by construction, not just in principle**: `LLMClient`
+is a thin facade over `_AnthropicProvider`/`_OpenAIProvider`, both
+implementing the same `call_tool(system, user_message, tool) -> dict`
+interface behind `LLM_PROVIDER` in `.env`. Every node writes its tool
+schema once in Anthropic's `{name, description, input_schema}` shape;
+`_OpenAIProvider` converts it to OpenAI's `{"type": "function", ...}`
+shape internally, so router.py/planner.py/retriever.py/answerer.py never
+need a second, provider-specific version of anything. Switching providers
+is genuinely just the two `.env` lines (`LLM_PROVIDER` + `LLM_MODEL`), not
+a "swap this file's code" instruction dressed up as config.
 
 ## Retrieval routing
 
@@ -108,7 +118,7 @@ sync by hand. See the top-level README's
 | `graph.py` | builds and compiles the `StateGraph` |
 | `state.py` | `AgentState` / `Intent` / `Plan` / `Citation` TypedDicts |
 | `router.py`, `planner.py`, `retriever.py`, `answerer.py` | node logic |
-| `llm_client.py` | single Claude API wrapper (`call_tool`) — swap providers here only |
+| `llm_client.py` | `LLMClient` facade + `_AnthropicProvider`/`_OpenAIProvider` — swap via `LLM_PROVIDER` in `.env`, not code |
 | `mcp_client.py` | spawns `src/mcp_server/server.py` over stdio, exposes `rag_search`/`web_search` |
-| `config.py` | reads `.env` (`ANTHROPIC_API_KEY`, `LLM_MODEL`, ...) |
+| `config.py` | reads `.env` (`LLM_PROVIDER`, `LLM_MODEL`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, ...) |
 | `main.py` | CLI entrypoint for one end-to-end query |

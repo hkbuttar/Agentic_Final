@@ -64,7 +64,7 @@ Full ingestion pipeline, schema decisions, and known data-quality caveats: [src/
 
 ## LLM & Configuration
 
-- **Provider:** Claude API (Anthropic), model-agnostic by design — swappable via `.env`/config (provider + model name) through a single `llm_client` module
+- **Provider:** Claude API (Anthropic) by default, or OpenAI — model-agnostic by design, swappable via two `.env` lines (`LLM_PROVIDER` + `LLM_MODEL`) through `src/agents/llm_client.py`'s provider abstraction, no code changes needed for either node logic or tool schemas
 - Native tool/function calling enabled throughout
 - Context limited to grounded snippets only; citations required to reduce hallucination
 - All system prompts, router/planner prompts, and few-shot examples are logged in a `prompts/` folder for disclosure
@@ -122,10 +122,14 @@ React/JS root.
 │   ├── tts/                        # Azure Speech integration
 │   │   ├── synthesize.py           # text -> WAV file via Azure Speech
 │   │   └── config.py               # AZURE_SPEECH_KEY / AZURE_SPEECH_REGION / AZURE_SPEECH_VOICE
-│   └── api/                        # FastAPI backend for the frontend
-│       ├── app.py                  # GET /health, POST /transcribe, /query, /speak
-│       ├── config.py                # API_HOST / API_PORT / API_CORS_ORIGINS
-│       └── README.md                # endpoint schemas
+│   ├── api/                         # FastAPI backend for the frontend
+│   │   ├── app.py                   # GET /health, POST /transcribe, /query, /speak
+│   │   ├── config.py                # API_HOST / API_PORT / API_CORS_ORIGINS
+│   │   └── README.md                # endpoint schemas
+│   └── eval/                        # RAG eval harness (Checkpoint 2 deliverable)
+│       ├── golden_queries.json      # hand-picked cases, one per retrieval-routing behavior
+│       ├── run_eval.py              # runs cases against the real graph, checks + scores them
+│       └── README.md                # methodology + latest real results (incl. a bug it caught)
 ├── notebooks/
 │   ├── 00_eda.ipynb              # exploratory analysis justifying ingestion choices
 │   └── 01_data_ingestion.ipynb   # step-through version of the pipeline
@@ -218,6 +222,33 @@ Full graph diagram, grounding-enforcement details, and prompt mapping:
 [src/agents/README.md](src/agents/README.md). System prompts themselves are
 in [prompts/](prompts/), per [Prompt Disclosure](#prompt-disclosure).
 
+## RAG Evaluation
+
+A small hand-picked golden query set (`src/eval/golden_queries.json`) run
+against the real graph — real Claude, real Chroma, real web search — with
+automatic checks for category-routing accuracy, correct web-fallback
+triggering, price-constraint compliance, and citation grounding.
+
+```bash
+cd src/eval
+python run_eval.py
+```
+
+This isn't just a checklist: the first run caught a real bug (rejected
+private catalog hits were leaking into the Answerer's evidence even after
+being judged irrelevant) that got fixed as a direct result. Methodology,
+per-case rationale, and the actual bug it found:
+[src/eval/README.md](src/eval/README.md).
+
+A second, complementary eval (`src/eval/proofagent_eval.py`) uses the
+third-party [proofagent-harness](https://pypi.org/project/proofagent-harness/)
+library to adversarially probe the same live agent graph — jailbreaks,
+injected fake context, requests to state unverified facts as certain —
+scoring manipulation-resistance, hallucination-resistance, and safety.
+It caught a real crash bug (an unhandled Serper API error was taking down
+the whole agent turn) that's now fixed; see the same eval README for the
+full writeup and latest SILVER-certified results.
+
 ## Voice Pipeline
 
 Fragment-based (record/upload → transcribe; synthesize → play), per
@@ -305,6 +336,14 @@ default) returns `access-control-allow-origin: http://localhost:5173`.
 - **Checkpoint 1 (Week 6):** One-page proposal (problem, data slice, tools), ingestion notebook, brief related work
 - **Checkpoint 2 (Week 8):** Architecture diagram (graph + MCP calls), UI wireframe, RAG eval plan, MCP README (schemas)
 - **Final (Week 10):** Live demo (≤7 min); clean repository with README and build scripts for index & MCP server; short presentation
+
+## Presentation
+
+Demo script with timing, architecture walkthrough, the two live-demo
+queries (chosen to show the relevance-check/web-fallback path, not just
+the happy path), and honest limitations: [presentation/README.md](presentation/README.md).
+A slide-deck version of the same script, formatted for walking through
+live, is linked from that file.
 
 ## Prompt Disclosure
 

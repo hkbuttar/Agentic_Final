@@ -20,6 +20,7 @@ mcp==2.0.0
 requests
 langgraph==1.2.10
 anthropic==0.120.2
+openai==2.50.0
 faster-whisper
 azure-cognitiveservices-speech
 fastapi==0.141.1

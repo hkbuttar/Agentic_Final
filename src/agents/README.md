@@ -34,7 +34,7 @@ field means).
 ## Running
 
 Requires `ANTHROPIC_API_KEY` in `.env` and the
-[ingestion pipeline](../../README.md#data-ingestion) already run (so
+[ingestion pipeline](../ingestion/README.md) already run (so
 `rag.search` has an index to query):
 
 ```bash

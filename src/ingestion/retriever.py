@@ -55,6 +55,7 @@ class RagRetriever:
                 "category_top_level": meta["category_top_level"] or None,
                 "ingredients": meta["ingredients"] or None,
                 "model_number": meta["model_number"] or None,
+                "url": meta["url"] or None,
                 "doc_id": meta["doc_id"],
                 "score": 1 - distance,
             })

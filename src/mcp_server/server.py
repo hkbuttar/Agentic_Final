@@ -30,26 +30,31 @@ def rag_search_tool(
     — pass it when the user's request names or clearly implies a category,
     omit it to search across all categories. Returns up to k ranked hits:
     {sku, title, price, rating, brand, category, category_top_level,
-    ingredients, model_number, doc_id, score}. `ingredients` and `rating`
-    are None for every product in this catalog (see top-level README's
-    Known data-quality limitations) — do not treat None as "value unknown,
-    ask again."
+    ingredients, model_number, url, doc_id, score}. `ingredients`, `rating`,
+    and `brand` are None for every product in this catalog (see top-level
+    README's Known data-quality limitations) — do not treat None as
+    "value unknown, ask again."
     """
     return rag_search(query, max_price=max_price, min_rating=min_rating, brand=brand, category=category, k=k)
 
 
 @server.tool(name="web.search")
 def web_search_tool(query: str, k: int = 5) -> list[dict]:
-    """Live web search, for current price/availability/"now"/"latest"
-    questions the private catalog can't answer.
+    """Live search (Google Shopping first, organic web search as fallback),
+    for current price/availability/"now"/"latest" questions the private
+    catalog can't answer, or when it simply doesn't have the right kind of
+    product.
 
-    Domain-allowlisted and robots.txt-respecting: results outside the
-    configured allowlist or disallowed by the source site's robots.txt are
-    silently dropped before reaching the agent. Cached (TTL from config) and
-    rate-limited; raises on quota exhaustion rather than returning partial
-    results silently. Returns up to k hits:
-    {title, url, snippet, price, availability} — price/availability are
-    currently always None (not parsed from snippet yet).
+    Shopping results carry a real merchant `link` (not a domain-allowlisted/
+    robots.txt-checked arbitrary URL — see web_tool.py's module docstring
+    for why that check doesn't apply to them) plus real `brand` (merchant
+    name) and `rating` when Google has one. Organic-fallback results are
+    domain-allowlisted and robots.txt-respecting as before, with `brand`/
+    `rating` always None (no structured data to draw them from). Cached
+    (TTL from config) and rate-limited; raises on quota exhaustion rather
+    than returning partial results silently. Returns up to k hits:
+    {title, url, snippet, price, availability, brand, rating} —
+    `availability` is currently always None (neither source provides it).
     """
     return web_search(query, k=k)
 

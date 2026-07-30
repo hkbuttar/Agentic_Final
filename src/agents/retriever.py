@@ -1,37 +1,76 @@
 """Retriever node — queries the private catalog via rag.search (scoped to
 the Router's inferred category), falls back to web.search if that isn't
-satisfactory (or the plan explicitly wants live data), and reconciles the
-two by title similarity. No LLM call here: this node only talks to the MCP
-tool server (src/mcp_server).
+genuinely satisfactory (or the plan explicitly wants live data), and
+reconciles the two by title similarity. Talks to the MCP tool server
+(src/mcp_server) for both searches, plus one small LLM call to judge
+relevance (see below) — despite the "Retriever" name being from a
+non-LLM-node era of this file, that judgment call is unavoidable.
 
 Routing behavior:
 1. rag.search, scoped to intent.category (if any) and constraints.
-2. If that returns zero hits — the category+constraints combination has no
-   match — OR the plan wants live data, also try web.search.
-3. If *neither* private nor web search finds anything, evidence is empty
-   and stays empty: that's the only failure state. The Answerer's prompt
-   handles it by saying so honestly rather than fabricating a
-   recommendation (see prompts/answerer_system.md).
-
-"Satisfactory" is deliberately just "at least one hit," not a similarity-
-score cutoff — rag.search's `where` filter already enforces the hard
-constraints (price/brand/category), and there's no calibrated eval set to
-justify a specific score threshold on top of that.
+2. Relevance check (see prompts/retriever_system.md): do any of the
+   private hits actually match the *specific product type* requested, not
+   just the general topic/category? Cosine similarity alone can't tell
+   the difference — see that prompt file for the concrete failure case
+   that motivated this (a bolster pillow and bed sheets scored higher
+   than some genuine matches elsewhere do, for a "throw pillow covers"
+   query, because the embedding model tracks topical overlap, not product
+   type). A plain "did we get zero rows back" check missed exactly this
+   case, which is why this is a real LLM judgment, not a score threshold.
+3. If private search wasn't satisfactory by that judgment — OR the plan
+   wants live data — also try web.search.
+4. If *neither* private nor web search finds anything, evidence is empty
+   (or, if private search returned only rejected candidates, empty of
+   anything the relevance check approved): that's the only failure state,
+   handled by the Answerer's prompt (say so honestly) rather than here.
 """
 import difflib
+import json
 from typing import Optional
 
+from config import PROMPTS_DIR
+from llm_client import LLMClient
 from mcp_client import MCPToolClient
 from state import AgentState
 
 _TITLE_MATCH_THRESHOLD = 0.6
+
+_RELEVANCE_SYSTEM_PROMPT = (PROMPTS_DIR / "retriever_system.md").read_text()
+
+_EMIT_RELEVANCE_TOOL = {
+    "name": "emit_relevance",
+    "description": "Judge whether any candidate private-catalog result genuinely satisfies the request.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "satisfactory": {
+                "type": "boolean",
+                "description": "true only if at least one candidate is the actual product type requested",
+            },
+            "reason": {"type": "string", "description": "one short sentence, for debugging"},
+        },
+        "required": ["satisfactory", "reason"],
+    },
+}
 
 
 def _titles_match(a: str, b: str) -> bool:
     return difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio() >= _TITLE_MATCH_THRESHOLD
 
 
-async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
+async def _judge_relevance(llm: LLMClient, task: str, hits: list[dict]) -> tuple[bool, str]:
+    if not hits:
+        return False, "no private hits at all"
+    payload = {"request": task, "candidates": [h["title"] for h in hits]}
+    result = await llm.call_tool(
+        system=_RELEVANCE_SYSTEM_PROMPT,
+        user_message=json.dumps(payload),
+        tool=_EMIT_RELEVANCE_TOOL,
+    )
+    return result["satisfactory"], result["reason"]
+
+
+async def run(state: AgentState, mcp_client: MCPToolClient, llm: LLMClient) -> dict:
     intent = state["intent"]
     plan = state["plan"]
     constraints = intent.get("constraints", {})
@@ -49,7 +88,7 @@ async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
 
     evidence: list[dict] = list(private_hits)
 
-    private_satisfactory = len(private_hits) > 0
+    private_satisfactory, relevance_reason = await _judge_relevance(llm, intent["task"], private_hits)
     need_web = not private_satisfactory or "live" in plan.get("sources", [])
 
     if need_web:
@@ -66,7 +105,7 @@ async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
                 evidence.append(hit)
 
     trace = state.get("trace", [])
-    reason = "plan wants live data" if "live" in plan.get("sources", []) else "no private match" if need_web else None
+    reason = "plan wants live data" if "live" in plan.get("sources", []) else relevance_reason if need_web else None
     trace_msg = f"retriever: {len(evidence)} evidence items (category={category!r}"
     trace_msg += f", web fallback: {reason})" if need_web else ")"
     trace.append(trace_msg)

@@ -198,11 +198,15 @@ Full tool schemas, config, and enforcement details: [src/mcp_server/README.md](s
 
 LangGraph state graph (`langgraph==1.2.10`) implementing the
 Router → Planner → Retriever → Answerer/Critic flow from
-[System Architecture](#system-architecture). Router/Planner/Answerer call
-Claude (`anthropic==0.120.2`) through a single `llm_client` module, forcing
-structured output via native tool-calling; the Retriever never calls a
-search API directly — it talks only to the [MCP Server](#mcp-server) as a
-client, over the same `rag.search`/`web.search` tools.
+[System Architecture](#system-architecture). Every node calls Claude
+(`anthropic==0.120.2`) through a single `llm_client` module, forcing
+structured output via native tool-calling — including the Retriever, which
+uses a small relevance-judgment call to decide whether the private catalog
+search genuinely satisfies the request before falling back to live search
+(see [Retrieval routing](src/agents/README.md#retrieval-routing)). The
+Retriever never calls a search API directly, though — it talks only to the
+[MCP Server](#mcp-server) as a client, over the same `rag.search`/`web.search`
+tools.
 
 ```bash
 cd src/agents
@@ -312,7 +316,5 @@ them (each node loads its prompt file directly at import time — the file
 |---|---|
 | `router_system.md` | `src/agents/router.py` |
 | `planner_system.md` | `src/agents/planner.py` |
+| `retriever_system.md` | `src/agents/retriever.py` (relevance judgment gating the web-search fallback — see [Agent Graph's Retrieval routing](src/agents/README.md#retrieval-routing)) |
 | `answerer_system.md` | `src/agents/answerer.py` |
-
-The Retriever (`src/agents/retriever.py`) makes no LLM calls, so it has no
-prompt file — it only calls `rag.search`/`web.search` via the MCP client.

@@ -23,7 +23,7 @@ def build_graph(llm: LLMClient, mcp_client: MCPToolClient):
         return await planner_node.run(state, llm)
 
     async def run_retriever(state: AgentState) -> dict:
-        return await retriever_node.run(state, mcp_client)
+        return await retriever_node.run(state, mcp_client, llm)
 
     async def run_answerer(state: AgentState) -> dict:
         return await answerer_node.run(state, llm)

@@ -24,7 +24,7 @@ flowchart LR
 |---|---|---|---|---|
 | Router | `router.py` | yes, forced `emit_intent` tool call | `transcript` | `intent` |
 | Planner | `planner.py` | yes, forced `emit_plan` tool call | `intent` | `plan` |
-| Retriever | `retriever.py` | no — MCP tool calls only | `intent`, `plan` | `evidence` |
+| Retriever | `retriever.py` | yes, forced `emit_relevance` tool call (relevance judgment only, not the primary answer) + MCP tool calls | `intent`, `plan` | `evidence` |
 | Answerer/Critic | `answerer.py` | yes, forced `emit_answer` tool call | `intent`, `evidence` | `answer`, `citations` |
 
 State schema: `state.py` (`AgentState` TypedDict, threaded through every
@@ -65,15 +65,20 @@ category the Router inferred (`intent.category`, one of the catalog's real
 [Category organization](../ingestion/README.md#category-organization)).
 `web.search` only runs when that isn't enough:
 
-1. **Private search returned zero hits** — the category+constraints
-   combination doesn't match anything in the catalog — or
+1. **Private search wasn't genuinely satisfactory** — either zero hits, or
+   the results exist but aren't actually the product type asked for — or
 2. **The plan wants live data** (current price/availability/"now"/"latest")
 
-"Satisfactory" is deliberately just "at least one hit," not a similarity
-score cutoff — see `retriever.py`'s docstring for why. If *neither* private
-nor web search finds anything, `evidence` comes out empty — that's the
-only failure state, and it's handled by the Answerer's prompt (say so
-honestly) rather than anywhere upstream.
+"Satisfactory" is a real LLM judgment (`emit_relevance`, prompts/retriever_system.md),
+not a row-count or similarity-score check — cosine similarity tracks
+topical overlap, not product-type correctness, so a request for "throw
+pillow covers" can score a filled bolster pillow or a bed sheet set higher
+than genuinely different, correct matches score elsewhere. A plain
+"did we get zero rows back" check missed exactly that case in testing.
+If *neither* private nor web search turns up something satisfactory,
+`evidence` comes out empty — that's the only failure state, and it's
+handled by the Answerer's prompt (say so honestly) rather than anywhere
+upstream.
 
 ## Grounding enforcement
 
@@ -90,11 +95,11 @@ the UI's agent step log.
 
 ## Prompt disclosure
 
-`router.py`, `planner.py`, and `answerer.py` each read their system prompt
-directly from `../../prompts/*.md` at import time — that directory is the
-single source of truth, not a separate copy kept in sync by hand. See the
-top-level README's [Prompt Disclosure](../../README.md#prompt-disclosure)
-section.
+`router.py`, `planner.py`, `retriever.py`, and `answerer.py` each read
+their system prompt directly from `../../prompts/*.md` at import time —
+that directory is the single source of truth, not a separate copy kept in
+sync by hand. See the top-level README's
+[Prompt Disclosure](../../README.md#prompt-disclosure) section.
 
 ## Files
 

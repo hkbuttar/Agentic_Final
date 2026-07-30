@@ -75,8 +75,11 @@ product.
 **Why Shopping first:** organic search for a product query mostly surfaces
 best-seller/category listing pages ("Best Throw Pillow Covers"), not
 individual products with prices. Shopping returns actual product listings
-(title, merchant, price). It's tried first; organic search only runs if
-Shopping returns nothing for that query.
+(title, merchant, price). It's tried first, up to twice — the endpoint is
+flaky, not just sparse: the same exact query has returned a full page of
+results on one call and an empty list moments later, repeatedly, in
+testing. Organic search only runs if both Shopping attempts come back
+empty.
 
 **Input**
 

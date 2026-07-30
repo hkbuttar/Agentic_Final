@@ -61,9 +61,19 @@ The Answerer agent must not fabricate these facts.
 
 ### `web.search`
 
-Live web search via Serper.dev or Brave Search (`WEB_SEARCH_PROVIDER` in
-`.env`). Used when the router/planner decide the request needs current
-price, availability, or "latest" info the private catalog can't answer.
+Live search via Serper.dev (Google Shopping first, organic web search as
+fallback) or Brave Search (organic only) — `WEB_SEARCH_PROVIDER` in `.env`.
+Used when the router/planner decide the request needs current price,
+availability, or "latest" info the private catalog can't answer — or, via
+the [agent graph's relevance check](../agents/README.md#retrieval-routing),
+whenever the private catalog simply doesn't have the right *kind* of
+product.
+
+**Why Shopping first:** organic search for a product query mostly surfaces
+best-seller/category listing pages ("Best Throw Pillow Covers"), not
+individual products with prices. Shopping returns actual product listings
+(title, merchant, price). It's tried first; organic search only runs if
+Shopping returns nothing for that query.
 
 **Input**
 
@@ -77,22 +87,26 @@ price, availability, or "latest" info the private catalog can't answer.
 ```json
 {
   "title": "...", "url": "...", "snippet": "...",
-  "price": null, "availability": null
+  "price": 12.49, "availability": null
 }
 ```
 
-`price`/`availability` are always `null` for now — not yet parsed out of
-the snippet text; comparisons should treat this as "unknown," not "$0" /
-"unavailable."
+`price` is populated for Shopping results (parsed from the API's price
+field), `null` for organic-fallback results (not parseable from a
+snippet). `availability` is always `null` — neither source provides it.
 
 **Enforcement, before any result is returned:**
 
-- **Domain allowlist** — `WEB_SEARCH_ALLOWED_DOMAINS` in `.env` (comma-separated
-  registrable domains; subdomains of a listed domain are allowed too). Results
-  outside the list are dropped silently.
-- **`robots.txt`** — fetched per-origin (cached 1h) and checked with
-  `can_fetch(ROBOTS_USER_AGENT, url)`. A missing/unreachable `robots.txt` is
-  treated as allow-all, matching standard convention.
+- **Domain allowlist + `robots.txt`** — apply to *organic* results only.
+  `WEB_SEARCH_ALLOWED_DOMAINS` in `.env` (comma-separated registrable
+  domains, subdomains included) drops anything outside the list;
+  `robots.txt` is fetched per-origin (cached 1h) and checked with
+  `can_fetch(ROBOTS_USER_AGENT, url)`, treating a missing/unreachable file
+  as allow-all. **Shopping results skip both checks** — their `url` is a
+  Google Shopping redirect, not the merchant's own domain, and the results
+  come from a licensed commercial product feed via Serper's API contract
+  rather than us crawling an arbitrary page, so there's nothing to check
+  them against. See `web_tool.py`'s module docstring for the full reasoning.
 - **Cache** — successful queries cached `WEB_SEARCH_CACHE_TTL_SECONDS`
   (default 120s, spec range 60–300s), keyed by exact query string.
 - **Rate limit** — sliding window, `WEB_SEARCH_RATE_LIMIT_CALLS` per

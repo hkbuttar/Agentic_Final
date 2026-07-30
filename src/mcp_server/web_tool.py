@@ -1,11 +1,29 @@
-"""web.search — wraps Serper.dev or Brave Search, returning
+"""web.search — wraps Serper.dev (Shopping, falling back to organic web
+search) or Brave Search (organic only), returning
 {title, url, snippet, price?, availability?}.
 
-Enforces a domain allowlist and robots.txt before any result is returned,
-caches responses (TTL from config), and rate-limits outbound calls. Used
-when the router/planner decide the request needs current price,
-availability, or "latest" info the private catalog can't answer.
+Enforces a domain allowlist and robots.txt before any *organic* result is
+returned, caches responses (TTL from config), and rate-limits outbound
+calls. Used when the router/planner decide the request needs current
+price, availability, or "latest" info the private catalog can't answer —
+or, via the Retriever's relevance check, when the private catalog simply
+doesn't have the right *kind* of product.
+
+Why Shopping first: organic web search for a product query mostly surfaces
+best-seller/category listing pages ("Best Throw Pillow Covers"), not
+individual products with prices — not useful for a recommendation. Serper's
+Shopping endpoint returns actual product listings (title, merchant, price,
+rating) instead. Its `link` field points at a Google Shopping redirect, not
+the merchant's own domain, so the domain allowlist and robots.txt checks
+(designed for arbitrary organic-search URLs we haven't vetted) don't apply
+to it — those results come from a licensed, curated commercial product
+feed via Serper's API contract, not from us crawling an arbitrary page, so
+there's nothing to check them against. Organic search is still the
+fallback when Shopping has no results for a query (seen in testing for
+narrower/less common queries), and keeps the allowlist/robots.txt checks.
 """
+import re
+from typing import Optional
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -70,6 +88,50 @@ def _robots_allowed(url: str) -> bool:
     return parser.can_fetch(ROBOTS_USER_AGENT, url)
 
 
+def _parse_shopping_price(text) -> Optional[float]:
+    if not text:
+        return None
+    match = re.search(r"[\d,]+\.?\d*", str(text))
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _call_serper_shopping(query: str, num: int) -> list[dict]:
+    """Real product listings (title, merchant, price, rating) via Google
+    Shopping — see module docstring for why this is tried before organic
+    search, and why its results skip the domain-allowlist/robots.txt checks.
+    """
+    if not SERPER_API_KEY:
+        raise WebSearchError("SERPER_API_KEY is not set")
+    resp = requests.post(
+        "https://google.serper.dev/shopping",
+        headers={"X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json"},
+        json={"q": query, "num": num},
+        timeout=_REQUEST_TIMEOUT_SECONDS,
+    )
+    resp.raise_for_status()
+    results = []
+    for item in resp.json().get("shopping", []):
+        url = item.get("link")
+        if not url:
+            continue
+        source = item.get("source")
+        results.append(
+            {
+                "title": item.get("title"),
+                "url": url,
+                "snippet": f"Sold by {source}" if source else None,
+                "price": _parse_shopping_price(item.get("price")),
+                "availability": None,
+            }
+        )
+    return results
+
+
 def _call_serper(query: str, num: int) -> list[dict]:
     if not SERPER_API_KEY:
         raise WebSearchError("SERPER_API_KEY is not set")
@@ -105,17 +167,10 @@ def _call_brave(query: str, num: int) -> list[dict]:
 _PROVIDERS = {"serper": _call_serper, "brave": _call_brave}
 
 
-def web_search(query: str, k: int = 5) -> list[dict]:
-    cached = _result_cache.get(query)
-    if cached is not None:
-        return cached[:k]
-
+def _organic_search(query: str, k: int) -> list[dict]:
     provider = _PROVIDERS.get(WEB_SEARCH_PROVIDER)
     if provider is None:
         raise WebSearchError(f"unknown WEB_SEARCH_PROVIDER: {WEB_SEARCH_PROVIDER!r}")
-
-    if not _limiter.allow():
-        raise WebSearchError("web.search rate limit exceeded, try again shortly")
 
     # Over-fetch since the allowlist/robots.txt filter below will drop some.
     raw_results = provider(query, num=max(k * 3, 10))
@@ -136,7 +191,26 @@ def web_search(query: str, k: int = 5) -> list[dict]:
         )
         if len(filtered) >= k:
             break
-
-    _result_cache.set(query, filtered)
-    log_event("web.search", query=query, source_urls=[r["url"] for r in filtered])
     return filtered
+
+
+def web_search(query: str, k: int = 5) -> list[dict]:
+    cached = _result_cache.get(query)
+    if cached is not None:
+        return cached[:k]
+
+    if not _limiter.allow():
+        raise WebSearchError("web.search rate limit exceeded, try again shortly")
+
+    results: list[dict] = []
+    if WEB_SEARCH_PROVIDER == "serper":
+        results = _call_serper_shopping(query, num=max(k * 2, 10))[:k]
+
+    # Shopping has no results for some narrower/less common queries (seen in
+    # testing) — organic search is the fallback, not a second-choice provider.
+    if not results:
+        results = _organic_search(query, k)
+
+    _result_cache.set(query, results)
+    log_event("web.search", query=query, source_urls=[r["url"] for r in results])
+    return results

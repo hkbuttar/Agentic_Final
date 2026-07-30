@@ -183,9 +183,10 @@ known data-quality caveats: [src/ingestion/README.md](src/ingestion/README.md).
 
 Built with the MCP Python SDK (`mcp==2.0.0`), exposing `rag.search` (wraps
 `RagRetriever` from [Data Ingestion](#data-ingestion)) and `web.search`
-(Serper.dev or Brave, domain-allowlisted, `robots.txt`-respecting, cached,
-rate-limited) to the LangGraph agent graph. Runs over stdio by default, or
-HTTP (SSE / streamable-http) via `.env`.
+(Serper.dev Shopping, falling back to domain-allowlisted/`robots.txt`-respecting
+organic search, or Brave; cached, rate-limited) to the LangGraph agent
+graph. Runs over stdio by default, or HTTP (SSE / streamable-http) via
+`.env`.
 
 ```bash
 cd src/mcp_server
@@ -293,8 +294,7 @@ default) returns `access-control-allow-origin: http://localhost:5173`.
 
 ## Safety Notes
 
-- Domain allowlist enforced for `web.search`
-- `robots.txt` / ToS respected for all live queries
+- Domain allowlist and `robots.txt` enforced for `web.search`'s organic-search fallback (arbitrary URLs from the open web); its Google Shopping results are a licensed, curated commercial product feed via Serper's API and are exempt from both — see [src/mcp_server/README.md](src/mcp_server/README.md#websearch) for why the two need different treatment
 - No unsafe chemical or product-safety advice generated
 - No secrets logged; only request/response metadata (timestamp, source URL) is recorded
 - Brand and ingredient fields are empty in the private catalog (see [Known data-quality limitations](src/ingestion/README.md#known-data-quality-limitations)); the Answerer agent must not fabricate these facts and should surface `None`/"not available" rather than guessing

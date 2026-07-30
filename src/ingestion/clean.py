@@ -4,7 +4,9 @@ Column names below are the real headers in
 marketing_sample_for_amazon_com-ecommerce__20200101_20200131__10k_data.csv
 (confirmed via inspect_schema.py / notebooks/00_eda.ipynb). `Brand Name` and
 `Ingredients` are read but are 100% empty in this file; there is no rating
-column at all, so `rating` is left as None.
+column at all, so `rating` is left as None. `brand_inferred` is a
+best-effort heuristic guess derived from the title (see `_infer_brand`),
+kept as a separate column from `brand` — never a substitute for it.
 """
 import re
 from typing import Optional
@@ -44,6 +46,30 @@ _BOILERPLATE = [
     "Make sure this fits by entering your model number.",
     "Go to your orders and start the return Select the ship method Ship it!",
 ]
+
+_BRAND_STOPWORDS = {
+    "the", "new", "set", "pack", "a", "an", "kids", "baby", "womens",
+    "mens", "boys", "girls",
+}
+
+
+def _infer_brand(title: str) -> Optional[str]:
+    """Best-effort single-word brand guess from the title's first word,
+    since the real `Brand Name` column is 100% empty (see README's Known
+    data-quality limitations). Deliberately conservative: returns None
+    rather than guessing when the first word looks like a number or a
+    generic descriptor, and never extends past one word even for real
+    multi-word brands ("Melissa & Doug" -> "Melissa") — a short, correct-
+    as-far-as-it-goes guess is less misleading than a confidently wrong
+    longer one built by grabbing more words. Kept as a separate
+    `brand_inferred` column, never merged into `brand`, so nothing
+    downstream can present a guess as verified data."""
+    if not title:
+        return None
+    first = title.split()[0].strip(".,'\"")
+    if not first or any(ch.isdigit() for ch in first) or first.lower() in _BRAND_STOPWORDS:
+        return None
+    return first
 
 
 def _parse_price(value) -> Optional[float]:
@@ -106,6 +132,7 @@ def clean() -> pd.DataFrame:
     out["id"] = raw[COL_ID]
     out["title"] = raw[COL_TITLE].fillna("").astype(str)
     out["brand"] = raw[COL_BRAND]
+    out["brand_inferred"] = out["title"].map(_infer_brand)
     out["category"] = raw[COL_CATEGORY].fillna("").astype(str)
     out["category_top_level"] = out["category"].map(_category_top_level)
     out["price"] = raw[COL_PRICE].map(_parse_price)

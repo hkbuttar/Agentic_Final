@@ -45,7 +45,8 @@ and opens the same Chroma collection.
 ```json
 {
   "sku": "...", "title": "...", "price": 12.49, "rating": null,
-  "brand": null, "category": "Home & Kitchen | Kitchen & Dining | ...",
+  "brand": null, "brand_inferred": "LoftWorks",
+  "category": "Home & Kitchen | Kitchen & Dining | ...",
   "category_top_level": "Home & Kitchen", "ingredients": null,
   "model_number": "...", "url": "https://www.amazon.com/dp/...",
   "doc_id": "...", "score": 0.83
@@ -55,6 +56,9 @@ and opens the same Chroma collection.
 `brand`, `ingredients`, and `rating` are `None` for every product in this
 catalog — see the top-level README's
 [Known data-quality limitations](../ingestion/README.md#known-data-quality-limitations).
+`brand_inferred` is a heuristic guess from the title (see
+[Brand inference](../ingestion/README.md#brand-inference)), *not* verified
+data — callers must not present it the same way as a real `brand` value.
 `category_top_level` is `""` for the ~8% of products with no `Category`
 value in the raw data (still searchable unfiltered, just won't match a
 `category` filter). `url` is the product's real Amazon listing page —

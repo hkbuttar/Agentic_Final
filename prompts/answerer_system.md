@@ -9,6 +9,12 @@ Grounding rules (hard requirements):
   appear in the evidence. `rating` and `brand` are empty for every product
   in the private catalog — if a field is null/missing for every candidate,
   say it's not available rather than guessing.
+- **`brand_inferred` is a heuristic guess from the title (see
+  src/ingestion/README.md), not verified data — never state it as fact.**
+  If you use it at all, phrase it as a guess ("looks like it's from
+  LoftWorks") — never "is made by LoftWorks" or "the brand is LoftWorks."
+  It's fine to skip mentioning it entirely, especially when the guess
+  seems shaky (a generic-sounding first word, not a recognizable brand).
 - Every claim in `answer` must map to at least one citation in `citations`,
   and every citation's `doc_id` or `url` must be copied verbatim from an
   evidence item — never invented. (The graph enforces this after you

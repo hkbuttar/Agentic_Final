@@ -1,7 +1,9 @@
 """Query interface over the Chroma index. This is what the rag.search MCP
 tool should import and call directly — its return shape matches the
 {sku, title, price, rating, brand, ingredients, doc_id} contract the
-Retriever/Answerer agents expect for citations.
+Retriever/Answerer agents expect for citations, plus category/
+category_top_level so results can be organized/filtered by category over
+the full (unfiltered-at-ingestion) product set.
 """
 from typing import Optional
 
@@ -15,6 +17,7 @@ def build_where(
     max_price: Optional[float] = None,
     min_rating: Optional[float] = None,
     brand: Optional[str] = None,
+    category: Optional[str] = None,
 ) -> Optional[dict]:
     clauses = []
     if max_price is not None:
@@ -23,6 +26,8 @@ def build_where(
         clauses.append({"rating": {"$gte": min_rating}})
     if brand is not None:
         clauses.append({"brand": brand})
+    if category is not None:
+        clauses.append({"category_top_level": category})
     if not clauses:
         return None
     return clauses[0] if len(clauses) == 1 else {"$and": clauses}
@@ -46,6 +51,8 @@ class RagRetriever:
                 "price": meta["price"] if meta["price"] >= 0 else None,
                 "rating": meta["rating"] if meta["rating"] >= 0 else None,
                 "brand": meta["brand"] or None,
+                "category": meta["category"] or None,
+                "category_top_level": meta["category_top_level"] or None,
                 "ingredients": meta["ingredients"] or None,
                 "model_number": meta["model_number"] or None,
                 "doc_id": meta["doc_id"],
@@ -56,5 +63,6 @@ class RagRetriever:
 
 if __name__ == "__main__":
     retriever = RagRetriever()
-    for hit in retriever.search("eco-friendly stainless steel cleaner", k=5, where=build_where(max_price=15)):
+    where = build_where(max_price=15, category="Home & Kitchen")
+    for hit in retriever.search("eco-friendly stainless steel cleaner", k=5, where=where):
         print(hit)

@@ -11,7 +11,7 @@ from typing import Optional
 
 import pandas as pd
 
-from config import CATEGORY_TOP_LEVEL, PRODUCTS_PARQUET, RAW_DIR
+from config import PRODUCTS_PARQUET, RAW_DIR
 
 COL_ID = "Uniq Id"
 COL_TITLE = "Product Name"
@@ -83,14 +83,16 @@ def _parse_unit(*text_fields: str) -> tuple[Optional[float], Optional[str]]:
     return None, None
 
 
-def _matches_category(category_breadcrumb: str) -> bool:
+def _category_top_level(category_breadcrumb: str) -> str:
     """Category is a single `|`-delimited breadcrumb per row (top -> leaf),
     not multiple category assignments — confirmed in notebooks/00_eda.ipynb
     (no row uses a second delimiter like ';', '||', or repeats a top-level
-    segment; every Uniq Id appears exactly once). So matching the top-level
-    segment is a correct 1:1 category filter, not a lossy approximation."""
-    top_level = category_breadcrumb.split("|")[0].strip().lower()
-    return top_level == CATEGORY_TOP_LEVEL.lower()
+    segment; every Uniq Id appears exactly once). Extracting the top-level
+    segment gives a clean, filterable category field without losing the
+    full breadcrumb (kept separately in `category`)."""
+    if not category_breadcrumb:
+        return ""
+    return category_breadcrumb.split("|")[0].strip()
 
 
 def clean() -> pd.DataFrame:
@@ -105,6 +107,7 @@ def clean() -> pd.DataFrame:
     out["title"] = raw[COL_TITLE].fillna("").astype(str)
     out["brand"] = raw[COL_BRAND]
     out["category"] = raw[COL_CATEGORY].fillna("").astype(str)
+    out["category_top_level"] = out["category"].map(_category_top_level)
     out["price"] = raw[COL_PRICE].map(_parse_price)
     out["rating"] = None
     out["ingredients"] = raw[COL_INGREDIENTS]
@@ -114,12 +117,6 @@ def clean() -> pd.DataFrame:
     about = raw[COL_ABOUT].fillna("").astype(str)
     tech = raw[COL_TECH].fillna("").astype(str)
     weight = raw[COL_WEIGHT]
-
-    mask = out["category"].map(_matches_category)
-    out = out[mask].reset_index(drop=True)
-    about = about[mask].reset_index(drop=True)
-    tech = tech[mask].reset_index(drop=True)
-    weight = weight[mask].reset_index(drop=True)
 
     units = [_parse_unit(title, w, a) for title, w, a in zip(out["title"], weight, about)]
     out["unit_qty"] = [u[0] for u in units]

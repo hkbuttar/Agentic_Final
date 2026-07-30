@@ -1,8 +1,10 @@
 """products.parquet -> persistent Chroma collection.
 
 Embedding text = title + features + ingredients (semantic signal).
-Metadata = price/rating/brand/ingredients/doc_id, kept alongside so
-rag.search can combine vector similarity with metadata filters.
+Metadata = price/rating/brand/category_top_level/ingredients/doc_id, kept
+alongside so rag.search can combine vector similarity with metadata
+filters — category_top_level in particular is what lets the full dataset
+be organized/filtered by category instead of pre-slicing at ingestion time.
 """
 import math
 
@@ -28,6 +30,7 @@ def _clean_metadata(row: pd.Series) -> dict:
         "title": str(row["title"]),
         "brand": str(row["brand"]) if pd.notna(row.get("brand")) else "",
         "category": str(row["category"]) if pd.notna(row.get("category")) else "",
+        "category_top_level": str(row["category_top_level"]) if pd.notna(row.get("category_top_level")) else "",
         "ingredients": str(row["ingredients"]) if pd.notna(row.get("ingredients")) else "",
         "model_number": str(row["model_number"]) if pd.notna(row.get("model_number")) else "",
         "url": str(row["url"]) if pd.notna(row.get("url")) else "",

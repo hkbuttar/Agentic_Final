@@ -20,17 +20,22 @@ def rag_search_tool(
     max_price: Optional[float] = None,
     min_rating: Optional[float] = None,
     brand: Optional[str] = None,
+    category: Optional[str] = None,
     k: int = 5,
 ) -> list[dict]:
-    """Vector + metadata search over the private Home & Kitchen product catalog.
+    """Vector + metadata search over the full private product catalog.
 
-    Preferred for factual/catalog questions. Returns up to k ranked hits:
-    {sku, title, price, rating, brand, ingredients, model_number, doc_id,
-    score}. brand, ingredients, and rating are None for every product in
-    this catalog slice (see top-level README's Known data-quality
-    limitations) — do not treat None as "value unknown, ask again."
+    Preferred for factual/catalog questions. `category` filters exactly
+    against the top-level category (e.g. "Home & Kitchen", "Toys & Games")
+    — pass it when the user's request names or clearly implies a category,
+    omit it to search across all categories. Returns up to k ranked hits:
+    {sku, title, price, rating, brand, category, category_top_level,
+    ingredients, model_number, doc_id, score}. `ingredients` and `rating`
+    are None for every product in this catalog (see top-level README's
+    Known data-quality limitations) — do not treat None as "value unknown,
+    ask again."
     """
-    return rag_search(query, max_price=max_price, min_rating=min_rating, brand=brand, k=k)
+    return rag_search(query, max_price=max_price, min_rating=min_rating, brand=brand, category=category, k=k)
 
 
 @server.tool(name="web.search")

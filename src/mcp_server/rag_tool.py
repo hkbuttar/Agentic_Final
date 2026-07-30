@@ -50,9 +50,10 @@ def rag_search(
     max_price: Optional[float] = None,
     min_rating: Optional[float] = None,
     brand: Optional[str] = None,
+    category: Optional[str] = None,
     k: int = 5,
 ) -> list[dict]:
-    where = build_where(max_price=max_price, min_rating=min_rating, brand=brand)
+    where = build_where(max_price=max_price, min_rating=min_rating, brand=brand, category=category)
     hits = _get_retriever().search(query, k=k, where=where)
     log_event("rag.search", query=query, doc_ids=[h["doc_id"] for h in hits])
     return hits

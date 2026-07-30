@@ -1,8 +1,22 @@
-"""Retriever node — queries the private catalog via rag.search, calls
-web.search if the plan includes "live", and reconciles the two by
-title similarity. No LLM call here: this node only talks to the MCP tool
-server (src/mcp_server), matching the README's "Queries private vector DB;
-calls web.search if the plan requires it; reconciles conflicts" spec.
+"""Retriever node — queries the private catalog via rag.search (scoped to
+the Router's inferred category), falls back to web.search if that isn't
+satisfactory (or the plan explicitly wants live data), and reconciles the
+two by title similarity. No LLM call here: this node only talks to the MCP
+tool server (src/mcp_server).
+
+Routing behavior:
+1. rag.search, scoped to intent.category (if any) and constraints.
+2. If that returns zero hits — the category+constraints combination has no
+   match — OR the plan wants live data, also try web.search.
+3. If *neither* private nor web search finds anything, evidence is empty
+   and stays empty: that's the only failure state. The Answerer's prompt
+   handles it by saying so honestly rather than fabricating a
+   recommendation (see prompts/answerer_system.md).
+
+"Satisfactory" is deliberately just "at least one hit," not a similarity-
+score cutoff — rag.search's `where` filter already enforces the hard
+constraints (price/brand/category), and there's no calibrated eval set to
+justify a specific score threshold on top of that.
 """
 import difflib
 from typing import Optional
@@ -21,11 +35,13 @@ async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
     intent = state["intent"]
     plan = state["plan"]
     constraints = intent.get("constraints", {})
+    category = intent.get("category")
 
     private_hits: list[dict] = await mcp_client.rag_search(
         intent["task"],
         max_price=constraints.get("max_price"),
         brand=constraints.get("brand"),
+        category=category,
         k=5,
     )
     for hit in private_hits:
@@ -33,7 +49,10 @@ async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
 
     evidence: list[dict] = list(private_hits)
 
-    if "live" in plan.get("sources", []):
+    private_satisfactory = len(private_hits) > 0
+    need_web = not private_satisfactory or "live" in plan.get("sources", [])
+
+    if need_web:
         live_hits: list[dict] = await mcp_client.web_search(intent["task"], k=5)
         for hit in live_hits:
             hit["source"] = "live"
@@ -47,5 +66,8 @@ async def run(state: AgentState, mcp_client: MCPToolClient) -> dict:
                 evidence.append(hit)
 
     trace = state.get("trace", [])
-    trace.append(f"retriever: {len(evidence)} evidence items (sources={plan.get('sources')})")
+    reason = "plan wants live data" if "live" in plan.get("sources", []) else "no private match" if need_web else None
+    trace_msg = f"retriever: {len(evidence)} evidence items (category={category!r}"
+    trace_msg += f", web fallback: {reason})" if need_web else ")"
+    trace.append(trace_msg)
     return {"evidence": evidence, "trace": trace}

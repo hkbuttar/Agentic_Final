@@ -14,6 +14,7 @@ class Constraints(TypedDict):
 class Intent(TypedDict):
     task: str
     constraints: Constraints
+    category: Optional[str]  # one of the catalog's known top-level categories, or None
     wants_live_data: bool
     safety_flags: list[str]
 

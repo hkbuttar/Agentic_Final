@@ -1,0 +1,83 @@
+[
+  {
+    "id": "private-satisfiable-toys",
+    "transcript": "Recommend a wooden puzzle for toddlers under 25 dollars",
+    "expected_category": "Toys & Games",
+    "expect_web_fallback": false,
+    "max_price": 25,
+    "notes": "Clear category, catalog has good coverage (6,662 Toys & Games rows) -> should stay private-only."
+  },
+  {
+    "id": "private-satisfiable-home-kitchen",
+    "transcript": "I need a reusable sandwich bag under fifteen dollars",
+    "expected_category": "Home & Kitchen",
+    "expect_web_fallback": false,
+    "max_price": 15,
+    "notes": "Regression check for the original working case from earlier in the project."
+  },
+  {
+    "id": "private-satisfiable-true-positive",
+    "transcript": "I need a cotton bolster pillow",
+    "expected_category": "Home & Kitchen",
+    "expect_web_fallback": false,
+    "max_price": null,
+    "notes": "Contrast case for the pillow-covers bug below: this time the catalog genuinely HAS the right product type, so the relevance check must not over-correct into a false negative."
+  },
+  {
+    "id": "relevance-check-catches-mismatch",
+    "transcript": "I need cotton throw pillow covers",
+    "expected_category": "Home & Kitchen",
+    "expect_web_fallback": true,
+    "max_price": null,
+    "notes": "The exact bug case: catalog only has filled pillows/sheets/coverlets, none are covers. Regression test for the relevance-judgment fix (retriever.py's emit_relevance call)."
+  },
+  {
+    "id": "web-fallback-empty-category",
+    "transcript": "I need a phone case for my smartphone under 5 dollars",
+    "expected_category": "Cell Phones & Accessories",
+    "expect_web_fallback": true,
+    "max_price": 5,
+    "notes": "Category genuinely has ~1 catalog row -> private search should return zero hits, forcing fallback."
+  },
+  {
+    "id": "wants-live-data-forces-fallback",
+    "transcript": "What is the current price of a Lego building set right now?",
+    "expected_category": "Toys & Games",
+    "expect_web_fallback": true,
+    "max_price": null,
+    "notes": "Even though Toys & Games is well-populated privately, 'current price... right now' should set wants_live_data=true and force a live check regardless."
+  },
+  {
+    "id": "total-failure-case",
+    "transcript": "Recommend a diamond-encrusted platinum toothbrush under three dollars",
+    "expected_category": null,
+    "expect_web_fallback": true,
+    "max_price": 3,
+    "expect_no_private_evidence": true,
+    "notes": "Deliberately absurd/unsatisfiable from the private catalog. NOT asserting empty evidence overall: Shopping search has broad enough recall to find a topically-related product (an over-budget toothbrush) for almost any query, so 'nothing found anywhere' isn't a realistic bar. What IS checkable: rejected private hits (paper party plates, in practice) must not leak into evidence just because web search also ran, and the answer must not fabricate an exact match — it should honestly flag the price/spec gap instead."
+  },
+  {
+    "id": "baby-products-category",
+    "transcript": "I need a baby bottle under 10 dollars",
+    "expected_category": "Baby Products",
+    "expect_web_fallback": null,
+    "max_price": 10,
+    "notes": "Category-routing check for a mid-sized category (214 rows); fallback behavior not asserted, just category + price compliance."
+  },
+  {
+    "id": "sports-outdoors-category",
+    "transcript": "Recommend a yoga mat for exercise under 30 dollars",
+    "expected_category": "Sports & Outdoors",
+    "expect_web_fallback": null,
+    "max_price": 30,
+    "notes": "Category-routing check (540 rows); fallback behavior not asserted."
+  },
+  {
+    "id": "arts-crafts-category",
+    "transcript": "Recommend arts and crafts supplies for kids under 15 dollars",
+    "expected_category": "Arts, Crafts & Sewing",
+    "expect_web_fallback": null,
+    "max_price": 15,
+    "notes": "Category-routing check for a smaller category (124 rows); fallback behavior not asserted."
+  }
+]

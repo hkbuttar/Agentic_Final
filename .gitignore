@@ -7,3 +7,5 @@ __pycache__/
 .DS_Store
 .venv/
 logs/
+src/eval/last_run_results.json
+src/eval/proofagent_results.json

@@ -211,6 +211,16 @@ def web_search(query: str, k: int = 5) -> list[dict]:
     if not _limiter.allow():
         raise WebSearchError("web.search rate limit exceeded, try again shortly")
 
+    # A live HTTP failure here (bad gateway, malformed/oversized query
+    # rejected by the provider, timeout, ...) is not the same kind of error
+    # as a missing API key: it's exactly the situation the Answerer's
+    # "empty evidence is not an error" handling already exists for. Letting
+    # requests.RequestException propagate instead crashes the whole agent
+    # turn — caught this via proofagent-harness's adversarial eval, where a
+    # very long jailbreak-style query got Serper's organic endpoint to
+    # 400, which took the entire graph down instead of just yielding zero
+    # web results. Missing-API-key errors (WebSearchError, raised
+    # deliberately above) are a real setup problem and still propagate.
     results: list[dict] = []
     if WEB_SEARCH_PROVIDER == "serper":
         # Serper's Shopping endpoint is flaky, not just sparse: the exact
@@ -221,14 +231,20 @@ def web_search(query: str, k: int = 5) -> list[dict]:
         # meaningfully different from the organic fallback below, which is
         # for queries Shopping genuinely has nothing for.
         for _ in range(_SHOPPING_ATTEMPTS):
-            results = _call_serper_shopping(query, num=max(k * 2, 10))[:k]
+            try:
+                results = _call_serper_shopping(query, num=max(k * 2, 10))[:k]
+            except requests.RequestException:
+                results = []
             if results:
                 break
 
     # Shopping has no results for some narrower/less common queries (seen in
     # testing) — organic search is the fallback, not a second-choice provider.
     if not results:
-        results = _organic_search(query, k)
+        try:
+            results = _organic_search(query, k)
+        except requests.RequestException:
+            results = []
 
     _result_cache.set(query, results)
     log_event("web.search", query=query, source_urls=[r["url"] for r in results])

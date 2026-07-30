@@ -47,6 +47,7 @@ class MCPToolClient:
         max_price: Optional[float] = None,
         min_rating: Optional[float] = None,
         brand: Optional[str] = None,
+        category: Optional[str] = None,
         k: int = 5,
     ) -> list[dict]:
         args: dict[str, Any] = {"query": query, "k": k}
@@ -56,6 +57,8 @@ class MCPToolClient:
             args["min_rating"] = min_rating
         if brand is not None:
             args["brand"] = brand
+        if category is not None:
+            args["category"] = category
         return await self._call("rag.search", args)
 
     async def web_search(self, query: str, k: int = 5) -> list[dict]:

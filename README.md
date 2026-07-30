@@ -49,8 +49,9 @@ All requests/responses are logged with timestamp and source URL. A domain allowl
 
 ### Retrieval Corpus
 
-- **Source:** Amazon Product Dataset 2020 (Kaggle), curated slice
-- **Schema:** `products.parquet` — `id, title, brand, category, price, rating, features, ingredients`
+- **Source:** Amazon Product Dataset 2020 (Kaggle), full dataset (10,002 products, all categories)
+- **Schema:** `products.parquet` — `id, title, brand, category, category_top_level, price, rating, features, ingredients`
+- **Organization:** `category_top_level` (e.g. "Home & Kitchen", "Toys & Games") is stored as filterable Chroma metadata, not used to pre-filter at ingestion time — `rag.search` can scope a query to one category or search across all of them
 - **Embeddings:** Title + features + ingredients via `sentence-transformers` (`all-MiniLM-L6-v2`); stored in a persistent Chroma collection (cosine distance)
 - **Normalization:** Units normalized (e.g., price per oz) for fair comparison
 
@@ -91,7 +92,7 @@ React/JS root.
 │   │   ├── build_index.py        # products.parquet -> data/chroma_db/
 │   │   ├── embeddings.py         # sentence-transformers wrapper (all-MiniLM-L6-v2)
 │   │   ├── retriever.py          # RagRetriever.search() — imported by rag.search
-│   │   └── config.py             # ingestion env/config (CHROMA_DIR, CATEGORY_TOP_LEVEL, ...)
+│   │   └── config.py             # ingestion env/config (CHROMA_DIR, CHROMA_COLLECTION, ...)
 │   ├── mcp_server/                # MCP server exposing web.search and rag.search tools
 │   │   ├── server.py              # registers both tools, runs stdio/sse/streamable-http
 │   │   ├── rag_tool.py            # wraps src/ingestion's RagRetriever
@@ -191,17 +192,17 @@ python retriever.py        # sanity-check query
 |---|---|---|---|
 | `download_data.py` | Kaggle | `data/raw/*.csv` | Fetches `promptcloud/amazon-product-dataset-2020` via `kagglehub` |
 | `inspect_schema.py` | `data/raw/*.csv` | stdout | Prints real column names/dtypes |
-| `clean.py` | `data/raw/*.csv` | `data/processed/products.parquet` | Reads the known columns directly (see [Column names](#column-names)), parses price, strips boilerplate text, filters to the category slice, derives `price_per_unit` |
+| `clean.py` | `data/raw/*.csv` | `data/processed/products.parquet` | Reads the known columns directly (see [Column names](#column-names)), parses price, strips boilerplate text, extracts `category_top_level`, derives `price_per_unit` |
 | `build_index.py` | `products.parquet` | `data/chroma_db/` | Embeds `title + features + ingredients` with `all-MiniLM-L6-v2`, upserts into a persistent Chroma collection (cosine distance) with filterable metadata |
 | `retriever.py` | `data/chroma_db/` | — | `RagRetriever.search(query, k, where)` — the function the `rag.search` MCP tool should import directly |
 
 `notebooks/00_eda.ipynb` is the exploratory pass that justifies every choice below (column completeness, category distribution, price distribution) — run it first if you want the reasoning, not just the conclusions.
 
-Verified end-to-end against the real download: 10,002 raw rows → 708 products in the Home & Kitchen slice → indexed and queryable (see [Known data-quality limitations](#known-data-quality-limitations)).
+Verified end-to-end against the real download: 10,002 raw rows → 10,002 products (every row keeps a non-empty title and a unique `Uniq Id`, so nothing gets dropped) → indexed and queryable across all categories (see [Known data-quality limitations](#known-data-quality-limitations)).
 
 ### Schema
 
-`products.parquet` columns: `id, title, brand, category, price, rating, ingredients, model_number, features, unit_qty, unit, price_per_unit, url, doc_id`.
+`products.parquet` columns: `id, title, brand, category, category_top_level, price, rating, ingredients, model_number, features, unit_qty, unit, price_per_unit, url, doc_id`.
 
 `doc_id` is the stable citation key used by the Answerer agent and surfaced in the UI's citation panel.
 
@@ -214,7 +215,8 @@ Verified end-to-end against the real download: 10,002 raw rows → 708 products 
 | `id` | `Uniq Id` |
 | `title` | `Product Name` |
 | `brand` | `Brand Name` (always empty — see below) |
-| `category` | `Category` |
+| `category` | `Category` (full `|`-delimited breadcrumb, kept as-is) |
+| `category_top_level` | derived from `Category` — just the first breadcrumb segment (see [Category organization](#category-organization)) |
 | `price` | `Selling Price` ($-anchored parse — see below) |
 | `ingredients` | `Ingredients` (always empty — see below) |
 | `model_number` | `Model Number` (82% populated, not embedded, kept as a lookup/citation aid) |
@@ -227,32 +229,33 @@ If the team swaps in a different PromptCloud CSV with a different schema, update
 
 **Why `Technical Details` instead of `Product Specification`?** `Product Specification` looked useful at first glance but turned out to be ~100% boilerplate — every populated row is just `Shipping Weight: X (View shipping rates and policies)|ASIN: Y|#rank in Z` with the words run together (no spaces: `ProductDimensions:5.7x4.9x1.2inches`), which adds noise, not signal, to an embedding. `Technical Details` (92% populated) has genuine free-text product descriptions instead, so it's what actually goes into `features`.
 
-### Category slice
+### Category organization
 
-`CATEGORY_TOP_LEVEL` in `.env` (default `Home & Kitchen`) is matched exactly against the top-level segment of each product's `|`-delimited `Category` breadcrumb — e.g. the `Home & Kitchen` in `Home & Kitchen | Bedding | ...`.
+The pipeline indexes every row — it no longer filters down to one category at ingestion time. `category_top_level` (the first segment of each product's `|`-delimited `Category` breadcrumb, e.g. the `Home & Kitchen` in `Home & Kitchen | Bedding | ...`) is stored as filterable Chroma metadata instead, so `rag.search` can scope a query to a category (`build_where(category="Home & Kitchen")`) or search across all of them by omitting it.
 
-**Do products carry multiple categories?** Checked directly in `notebooks/00_eda.ipynb` / `_matches_category`'s docstring: no. Every `Category` value in this file is a single hierarchical breadcrumb (top → leaf, 1–6 levels deep, `|`-delimited) — there's no second delimiter (`;`, `||`, newline) joining independent category assignments, no row repeats a top-level segment, and every `Uniq Id` appears exactly once (no duplicate rows representing the same product filed under a second category). Matching the top-level breadcrumb segment is therefore a correct 1:1 filter for this file, not a lossy approximation of a many-to-many relationship. (Caveat: a product can still be topically relevant to Home & Kitchen while filed under a different top-level, e.g. a kids' play-kitchen set under Toys & Games — that's a taxonomy/relevance tradeoff, not a parsing bug.)
+**Do products carry multiple categories?** Checked directly in `notebooks/00_eda.ipynb`: no. Every `Category` value in this file is a single hierarchical breadcrumb (top → leaf, 1–6 levels deep, `|`-delimited) — there's no second delimiter (`;`, `||`, newline) joining independent category assignments, no row repeats a top-level segment, and every `Uniq Id` appears exactly once. Taking the top-level breadcrumb segment is therefore a correct 1:1 label for this file, not a lossy approximation of a many-to-many relationship. (Caveat: a product can still be topically relevant to a category while filed under a different top-level, e.g. a kids' play-kitchen set under Toys & Games — that's a taxonomy/relevance tradeoff, not a parsing bug.)
 
-**Why not Household Cleaning, per the original spec's suggestion?** The actual `promptcloud/amazon-product-dataset-2020` file `kagglehub` returns (`marketing_sample_for_amazon_com-ecommerce__20200101_20200131__10k_data.csv`, 10,002 rows) is a general marketplace sample dominated by Toys & Games (6,662 rows). Only 23 rows fall under Health & Household at all, and just 7 have "cleaning" anywhere in their category breadcrumb — too thin for a meaningful comparison demo. Home & Kitchen (708 rows: Home Décor, Furniture, Bedding, Event & Party Supplies, Kitchen & Dining) is the closest well-populated category to the spec's product-discovery use case. Swap `CATEGORY_TOP_LEVEL` back to `Health & Household` (or any other top-level category) if the team decides a thinner, on-spec slice is preferable — the pipeline doesn't care which one you pick.
+**Real distribution**, confirmed against the full indexed set (10,002 rows): dominated by Toys & Games (6,662), followed by Clothing/Shoes/Jewelry (630), Sports & Outdoors (540), Home & Kitchen (708: Home Décor, Furniture, Bedding, Event & Party Supplies, Kitchen & Dining), Baby Products (214), and a long tail down to Health & Household (23). 830 rows have no `Category` value at all (`category_top_level` is `""` for those — `rag.search`'s category filter simply won't match them, they're still searchable unfiltered).
 
-An earlier version of this filter matched the keyword "clean" against title/description text directly, which pulled in unrelated products (plush toys, blankets) because their marketing copy says things like "wipe clean" or "easy to clean." Matching only the structured category breadcrumb's top-level segment avoids that false-positive problem regardless of which category is chosen.
+*(Earlier iterations of this project pre-filtered to a single category at ingestion time — first considered "Household Cleaning" per the original spec, rejected since only 23 rows fall under Health & Household at all and just 7 mention "cleaning" anywhere in their breadcrumb, then settled on Home & Kitchen as the best-populated fit. Indexing everything and filtering at query time instead makes that tradeoff moot — every category is available, and a query can still scope to Home & Kitchen via `category="Home & Kitchen"` if that's what's relevant.)*
 
 ### Known data-quality limitations
 
 Confirmed against the real downloaded file — worth stating explicitly in the writeup/safety notes:
 
-- **Brand Name and Ingredients are 100% empty** across all 10,002 raw rows, not just this slice. The Answerer agent should not claim brand or ingredient facts for these products; `retriever.py` already returns `None` for both rather than fabricating a value.
+- **Brand Name and Ingredients are 100% empty** across all 10,002 rows. The Answerer agent should not claim brand or ingredient facts for these products; `retriever.py` already returns `None` for both rather than fabricating a value.
 - **No rating/review-count column exists** in this file at all (`clean.py` leaves `rating` as `None`). If the team wants ratings for the demo, either source a `reviews.parquet` from a different PromptCloud file or drop rating-based comparisons from the example queries.
 - **Selling Price has ~4% garbage values** dataset-wide ("from 2 sellers", "Total price:", free-text shipping blurbs, "$8.25 - $31.95" ranges). `_parse_price` requires the value to start with `$` before extracting a number — this matters: an earlier, unanchored version of the parser mis-read "from 2 sellers" as $2.00 and pulled a random $5 out of an unrelated shipping-policy sentence. For genuine ranges ("$8.25 - $31.95"), the low end is used as the representative price.
-- **`price_per_unit` is only derived when a quantity+unit** (oz, lb, ct, etc.) is parseable from the title/weight/description text — 597 of 708 rows (84%) in the current slice. `price` itself is populated for 695/708.
-- **`About Product` / `Technical Details` contain recurring boilerplate** ("Make sure this fits by entering your model number." in 76% of rows, a return-policy blurb in 43% of `Technical Details` rows) that `clean.py` strips before building `features`, so it doesn't dilute the embedding for every product identically.
+- **`price_per_unit` is only derived when a quantity+unit** (oz, lb, ct, etc.) is parseable from the title/weight/description text — 8,838 of 10,002 rows (88%). `price` itself is populated for 9,839/10,002 (98%).
+- **`category_top_level` is empty for 830 rows** (8%) where the raw `Category` value is blank — those rows are still embedded and searchable, they just won't match a `category` filter.
+- **`About Product` / `Technical Details` contain recurring boilerplate** ("Make sure this fits by entering your model number." in most rows, a return-policy blurb in a large share of `Technical Details` rows) that `clean.py` strips before building `features`, so it doesn't dilute the embedding for every product identically.
 - **`Is Amazon Seller`** (Y/N, 100% populated) isn't currently surfaced — could be worth exposing as a trust signal if the Answerer agent wants to flag third-party vs. Amazon-fulfilled listings.
 
 ### Embedding backend
 
-`all-MiniLM-L6-v2` via `sentence-transformers` (`embeddings.py`), runs fully local (CPU/MPS/CUDA) — no API key, no external calls. 22M params, 384-dim vectors, embeds the full 708-product slice in a few seconds. Override the model name with `EMBEDDING_MODEL` in `.env` if the team wants something different; `build_index.py`/`retriever.py` only depend on the `.embed(texts) -> list[list[float]]` interface, not on this model specifically.
+`all-MiniLM-L6-v2` via `sentence-transformers` (`embeddings.py`), runs fully local (CPU/MPS/CUDA) — no API key, no external calls. 22M params, 384-dim vectors, embeds the full 10,002-product dataset in well under a minute (~25s on Apple Silicon CPU/MPS). Override the model name with `EMBEDDING_MODEL` in `.env` if the team wants something different; `build_index.py`/`retriever.py` only depend on the `.embed(texts) -> list[list[float]]` interface, not on this model specifically.
 
-**Why not Qwen?** Qwen's embedding line (Qwen3-Embedding) only ships in 0.6B/4B/8B — there's no smaller Qwen option, and 0.6B is ~30x the parameter count of MiniLM for no meaningful accuracy benefit at this dataset size (708 products). MiniLM is fast enough to rebuild the index from scratch in seconds during dev, which matters far more than marginal retrieval-quality gains here.
+**Why not Qwen?** Qwen's embedding line (Qwen3-Embedding) only ships in 0.6B/4B/8B — there's no smaller Qwen option, and 0.6B is ~30x the parameter count of MiniLM for no meaningful accuracy benefit at this dataset size. MiniLM is fast enough to rebuild the index from scratch in under a minute during dev, which matters far more than marginal retrieval-quality gains here.
 
 ### Handing off to the MCP layer
 
@@ -262,10 +265,10 @@ Confirmed against the real downloaded file — worth stating explicitly in the w
 from retriever import RagRetriever, build_where
 
 retriever = RagRetriever()
-retriever.search(query, k=5, where=build_where(max_price=15, min_rating=4.0, brand="Method"))
+retriever.search(query, k=5, where=build_where(max_price=15, min_rating=4.0, brand="Method", category="Home & Kitchen"))
 ```
 
-Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `model_number` as an extra field).
+Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `category`, `category_top_level`, and `model_number` as extra fields).
 
 ## MCP Server
 

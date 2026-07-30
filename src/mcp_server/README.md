@@ -22,8 +22,9 @@ in `.env` to run it as a standalone HTTP server instead (`MCP_HTTP_HOST` /
 
 ### `rag.search`
 
-Vector + metadata search over the private product catalog (`src/ingestion` →
-`data/chroma_db/`). Preferred for factual/catalog questions. Requires the
+Vector + metadata search over the full private product catalog, all
+categories (`src/ingestion` → `data/chroma_db/`, 10,002 products).
+Preferred for factual/catalog questions. Requires the
 [ingestion pipeline](../../README.md#data-ingestion) to have been run first —
 this tool imports `RagRetriever` from `src/ingestion/retriever.py` directly
 and opens the same Chroma collection.
@@ -34,8 +35,9 @@ and opens the same Chroma collection.
 |---|---|---|---|
 | `query` | string | yes | natural-language search text |
 | `max_price` | number | no | filter: `price <= max_price` |
-| `min_rating` | number | no | filter: `rating >= min_rating` (always empty in this catalog slice — see below) |
-| `brand` | string | no | exact-match filter (always empty in this catalog slice) |
+| `min_rating` | number | no | filter: `rating >= min_rating` (always empty in this catalog — see below) |
+| `brand` | string | no | exact-match filter (always empty in this catalog) |
+| `category` | string | no | exact-match filter against `category_top_level` (e.g. `"Home & Kitchen"`, `"Toys & Games"`); omit to search across all categories — see [Category organization](../../README.md#category-organization) |
 | `k` | integer | no, default 5 | number of hits to return |
 
 **Output** — list of up to `k` hits:
@@ -43,14 +45,18 @@ and opens the same Chroma collection.
 ```json
 {
   "sku": "...", "title": "...", "price": 12.49, "rating": null,
-  "brand": null, "ingredients": null, "model_number": "...",
-  "doc_id": "...", "score": 0.83
+  "brand": null, "category": "Home & Kitchen | Kitchen & Dining | ...",
+  "category_top_level": "Home & Kitchen", "ingredients": null,
+  "model_number": "...", "doc_id": "...", "score": 0.83
 }
 ```
 
 `brand`, `ingredients`, and `rating` are `None` for every product in this
-catalog slice — see the top-level README's
+catalog — see the top-level README's
 [Known data-quality limitations](../../README.md#known-data-quality-limitations).
+`category_top_level` is `""` for the ~8% of products with no `Category`
+value in the raw data (still searchable unfiltered, just won't match a
+`category` filter).
 The Answerer agent must not fabricate these facts.
 
 ### `web.search`

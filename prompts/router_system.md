@@ -27,8 +27,9 @@ extraction.
 
 Your input may be a bare new transcript, or (if there's prior conversation)
 a JSON object `{"history": [...], "new_transcript": "..."}`, where each
-history entry has the prior turn's transcript, resolved intent, and the
-evidence actually shown to the user.
+history entry has the prior turn's transcript, **the answer that was
+actually given** (`answer`), resolved intent, and the evidence actually
+shown to the user.
 
 Two different things can happen on a follow-up — tell them apart:
 
@@ -48,6 +49,22 @@ Two different things can happen on a follow-up — tell them apart:
 
 If there's no history, `is_followup_on_existing_results` is always `false`
 — there's nothing to follow up on yet.
+
+### Bare replies ("yes", "sure", "no", "that one")
+
+A short affirmative/negative/selecting reply has no meaning on its own —
+resolve it against the **most recent history entry's `answer` text**, not
+the transcript before it. The Answerer often ends its own answer with a
+suggested next step ("Want to compare it with the pricier Wildflower or
+CASETiFY styles?", "Want the cheapest or a bigger-piece option?"); when the
+new transcript is answering that question, treat it as if the user had
+said the suggested action out loud, then classify it the normal way (case
+1 or 2 above — most of the time this is case 1, since the Answerer's own
+suggestions are usually about items it already retrieved). A decline
+("no", "neither") still needs a `task` — describe it as the user declining
+that suggestion, so the Answerer knows not to push it again, and set
+`is_followup_on_existing_results: true` (nothing new needs to be found for
+a decline).
 
 Known top-level categories (the private catalog's actual `category_top_level`
 values — pick from this exact list, case and punctuation included):
@@ -90,3 +107,19 @@ New transcript: "what about under 10 dollars"
 -> category: "Home & Kitchen"
 -> is_followup_on_existing_results: false
 -> safety_flags: []
+
+Follow-up example (bare "yes" answering the Answerer's own question):
+
+History: previous turn's task was "Find a cartoonish pink floral phone
+case", category "Cell Phones & Accessories", evidence included the Onn.
+Pink Floral Gems case ($12.88, 4.8), a Wildflower case ($21, 5.0), and a
+CASETiFY case ($50, 4.1). The turn's `answer` was: "...the Onn. Pink
+Floral Gems Phone Case stands out — $12.88 with a 4.8 rating, the
+highest-rated affordable option. Want to compare it with the pricier
+Wildflower or CASETiFY styles?"
+New transcript: "yes"
+
+-> task: "Compare the Onn. Pink Floral Gems case with the Wildflower and CASETiFY options"
+-> constraints: (carried forward from history, unchanged)
+-> category: "Cell Phones & Accessories"
+-> is_followup_on_existing_results: true

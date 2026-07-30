@@ -11,6 +11,12 @@ already on screen ("the cheapest one", "the second option") need
 search and just re-rank the evidence already shown, rather than
 re-querying and risking a subtly different result set (rag.search/live
 search aren't guaranteed to return byte-identical results turn to turn).
+
+Includes the prior turn's own `answer` text in that history, not just its
+task/evidence — a bare "yes" only means something in light of whatever
+question the Answerer itself just asked ("Want to compare it with the
+pricier Wildflower or CASETiFY styles?"); without the answer text there's
+nothing for "yes" to resolve against.
 """
 import json
 
@@ -102,6 +108,7 @@ async def run(state: AgentState, llm: LLMClient) -> dict:
         compact_history = [
             {
                 "transcript": turn["transcript"],
+                "answer": turn.get("answer"),
                 "intent": {k: v for k, v in turn["intent"].items() if k != "safety_flags"},
                 "evidence": [
                     {k: e.get(k) for k in ("title", "price", "rating", "brand", "source")}

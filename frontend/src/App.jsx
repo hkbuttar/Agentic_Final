@@ -60,6 +60,7 @@ export default function App() {
 
   async function handleNewAudioReady(blob) {
     setError(null);
+    setLog([]); // clear the previous conversation immediately, not once the new one resolves
     setStatus("transcribing");
     try {
       const { text } = await transcribeAudio(blob);
@@ -84,6 +85,7 @@ export default function App() {
 
   function handleNewManualSubmit(event) {
     event.preventDefault();
+    setLog([]); // clear the previous conversation immediately, not once the new one resolves
     runQueryFor(newText, []);
     setNewText("");
   }

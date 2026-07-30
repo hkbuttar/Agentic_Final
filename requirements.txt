@@ -1,3 +1,13 @@
+# CPU-only torch build: sentence-transformers pulls in torch, and the
+# default PyPI wheel is the CUDA-enabled Linux build (~500MB) even though
+# there's no GPU to use it — that alone is enough to OOM a build on a
+# 512MB-RAM host (e.g. Render's free tier). The +cpu build is ~1/3 the size.
+# macOS never had a CUDA build to begin with (no +cpu variant exists there),
+# hence the platform markers.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu ; sys_platform != "darwin"
+torch==2.13.0 ; sys_platform == "darwin"
+
 kagglehub
 pandas
 pyarrow

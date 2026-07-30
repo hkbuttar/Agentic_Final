@@ -116,8 +116,16 @@ async def transcribe_endpoint(audio: UploadFile) -> dict:
     }
 
 
+class HistoryTurn(BaseModel):
+    transcript: str
+    intent: dict
+    evidence: list[dict]
+    answer: str
+
+
 class QueryRequest(BaseModel):
     transcript: str
+    history: list[HistoryTurn] = []
 
 
 @app.post("/query")
@@ -125,7 +133,10 @@ async def query_endpoint(request: QueryRequest) -> dict:
     if _state.graph is None:
         raise HTTPException(status_code=503, detail="agent graph not ready")
 
-    result = await _state.graph.ainvoke({"transcript": request.transcript, "trace": []})
+    history = [turn.model_dump() for turn in request.history]
+    result = await _state.graph.ainvoke(
+        {"transcript": request.transcript, "history": history, "trace": []}
+    )
     return {
         "transcript": request.transcript,
         "intent": result.get("intent"),

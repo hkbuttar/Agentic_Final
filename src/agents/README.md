@@ -22,14 +22,27 @@ flowchart LR
 
 | Node | File | LLM call? | Input (state field) | Output (state field) |
 |---|---|---|---|---|
-| Router | `router.py` | yes, forced `emit_intent` tool call | `transcript` | `intent` |
+| Router | `router.py` | yes, forced `emit_intent` tool call | `transcript`, `history` | `intent` |
 | Planner | `planner.py` | yes, forced `emit_plan` tool call | `intent` | `plan` |
-| Retriever | `retriever.py` | yes, forced `emit_relevance` tool call (relevance judgment only, not the primary answer) + MCP tool calls | `intent`, `plan` | `evidence` |
+| Retriever | `retriever.py` | yes, forced `emit_relevance` tool call (relevance judgment only, not the primary answer) + MCP tool calls, or none at all for a follow-up (see below) | `intent`, `plan`, `history` | `evidence` |
 | Answerer/Critic | `answerer.py` | yes, forced `emit_answer` tool call | `intent`, `evidence` | `answer`, `citations` |
 
 State schema: `state.py` (`AgentState` TypedDict, threaded through every
 node — see the top-level README's System Architecture table for what each
 field means).
+
+**Follow-ups**: `AgentState.history` carries prior turns (transcript,
+resolved intent, evidence actually shown) into the Router, which resolves
+ellipsis ("what about under $10" — no product type in the transcript
+itself, only in the previous turn) and distinguishes it from a pure
+selection over what's already on screen ("the cheapest one" — sets
+`intent.is_followup_on_existing_results = true`). The Retriever checks
+that flag first: if set, it skips `rag.search`/`web.search` entirely and
+reuses the previous turn's evidence, rather than re-querying and risking a
+different result set for a query that isn't actually asking for anything
+new (see `prompts/router_system.md` and `retriever.py`'s docstring for the
+worked examples). The frontend (`frontend/src/App.jsx`) maintains this
+history across turns and resets it on "New Question."
 
 ## Running
 
@@ -116,7 +129,7 @@ sync by hand. See the top-level README's
 | file | role |
 |---|---|
 | `graph.py` | builds and compiles the `StateGraph` |
-| `state.py` | `AgentState` / `Intent` / `Plan` / `Citation` TypedDicts |
+| `state.py` | `AgentState` / `Intent` / `Plan` / `Citation` / `HistoryTurn` TypedDicts |
 | `router.py`, `planner.py`, `retriever.py`, `answerer.py` | node logic |
 | `llm_client.py` | `LLMClient` facade + `_AnthropicProvider`/`_OpenAIProvider` — swap via `LLM_PROVIDER` in `.env`, not code |
 | `mcp_client.py` | spawns `src/mcp_server/server.py` over stdio, exposes `rag_search`/`web_search` |

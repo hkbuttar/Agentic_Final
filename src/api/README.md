@@ -44,7 +44,15 @@ Mic upload → transcript. `multipart/form-data`, field `audio` (WAV/MP3).
 Live transcript → agent step log, comparison table, citations. Runs the
 full Router → Planner → Retriever → Answerer graph.
 
-Request: `{"transcript": "..."}`
+Request: `{"transcript": "...", "history": [...]}` — `history` is
+optional (defaults to `[]`) and carries prior turns for follow-ups ("the
+cheapest one", "what about under $10"): each entry is
+`{"transcript": "...", "intent": {...}, "evidence": [...], "answer": "..."}`,
+i.e. the shape of a previous `/query` response's own `transcript`/`intent`/
+`evidence`/`answer` fields. The frontend builds this by appending each
+response to a capped list (`frontend/src/App.jsx`'s `HISTORY_LIMIT`). See
+[src/agents/README.md](../agents/README.md#graph)'s Follow-ups note for how
+the Router/Retriever use it.
 
 Response — the full `AgentState` (minus internal-only fields):
 

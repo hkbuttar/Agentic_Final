@@ -9,6 +9,23 @@ from state import AgentState
 
 _SYSTEM_PROMPT = (PROMPTS_DIR / "router_system.md").read_text()
 
+# Must match the catalog's real category_top_level values (see
+# src/ingestion/README.md#category-organization) — kept as a plain string
+# (not a hard `enum`) so a stale/mismatched value degrades gracefully
+# (rag.search just returns zero private hits, which is exactly the
+# retriever's trigger to fall back to web.search) rather than making the
+# whole tool call fail schema validation.
+_KNOWN_CATEGORIES = [
+    "Toys & Games", "Home & Kitchen", "Clothing, Shoes & Jewelry",
+    "Sports & Outdoors", "Baby Products", "Arts, Crafts & Sewing",
+    "Office Products", "Hobbies", "Industrial & Scientific",
+    "Health & Household", "Remote & App Controlled Vehicle Parts",
+    "Tools & Home Improvement", "Remote & App Controlled Vehicles & Parts",
+    "Pet Supplies", "Patio, Lawn & Garden", "Grocery & Gourmet Food",
+    "Beauty & Personal Care", "Automotive", "Electronics", "Video Games",
+    "Musical Instruments", "Movies & TV", "Cell Phones & Accessories",
+]
+
 _EMIT_INTENT_TOOL = {
     "name": "emit_intent",
     "description": "Return the structured intent extracted from the user's transcript.",
@@ -28,6 +45,14 @@ _EMIT_INTENT_TOOL = {
                 },
                 "required": ["max_price", "brand", "material"],
             },
+            "category": {
+                "type": ["string", "null"],
+                "description": (
+                    "one of the catalog's known top-level categories: "
+                    + ", ".join(_KNOWN_CATEGORIES)
+                    + " — or null if the request doesn't clearly fit one"
+                ),
+            },
             "wants_live_data": {
                 "type": "boolean",
                 "description": 'true if the user is asking about current price, availability, "now", or "latest"',
@@ -38,7 +63,7 @@ _EMIT_INTENT_TOOL = {
                 "description": "chemical/product-safety concerns raised by the request; empty if none",
             },
         },
-        "required": ["task", "constraints", "wants_live_data", "safety_flags"],
+        "required": ["task", "constraints", "category", "wants_live_data", "safety_flags"],
     },
 }
 
@@ -50,5 +75,5 @@ async def run(state: AgentState, llm: LLMClient) -> dict:
         tool=_EMIT_INTENT_TOOL,
     )
     trace = state.get("trace", [])
-    trace.append(f"router: {intent['task']!r}")
+    trace.append(f"router: {intent['task']!r} (category={intent['category']!r})")
     return {"intent": intent, "trace": trace}

@@ -11,12 +11,12 @@ private catalog and the web only through the [MCP server](../mcp_server/README.m
 ```mermaid
 flowchart LR
     T["Transcript"] --> R["Router"]
-    R -->|"intent"| P["Planner"]
+    R -->|"intent + category"| P["Planner"]
     P -->|"plan"| RT["Retriever"]
-    RT -->|"rag.search"| MCP[("MCP Server")]
-    RT -.->|"web.search, if plan needs live data"| MCP
+    RT -->|"rag.search, scoped to category"| MCP[("MCP Server")]
+    RT -.->|"web.search, if no private match or plan needs live data"| MCP
     MCP -.-> RT
-    RT -->|"evidence"| A["Answerer / Critic"]
+    RT -->|"evidence (possibly empty)"| A["Answerer / Critic"]
     A -->|"answer + citations"| O["Output"]
 ```
 
@@ -57,15 +57,36 @@ calls the Retriever makes against the MCP server — both are "native
 tool/function calling" per the top-level README's LLM & Configuration
 section.
 
+## Retrieval routing
+
+The Retriever always tries the private catalog first, scoped to whatever
+category the Router inferred (`intent.category`, one of the catalog's real
+`category_top_level` values — see
+[Category organization](../ingestion/README.md#category-organization)).
+`web.search` only runs when that isn't enough:
+
+1. **Private search returned zero hits** — the category+constraints
+   combination doesn't match anything in the catalog — or
+2. **The plan wants live data** (current price/availability/"now"/"latest")
+
+"Satisfactory" is deliberately just "at least one hit," not a similarity
+score cutoff — see `retriever.py`'s docstring for why. If *neither* private
+nor web search finds anything, `evidence` comes out empty — that's the
+only failure state, and it's handled by the Answerer's prompt (say so
+honestly) rather than anywhere upstream.
+
 ## Grounding enforcement
 
 The Answerer's system prompt (`prompts/answerer_system.md`) tells the model
-every citation must come verbatim from the evidence it was given. `answerer.py`
-then enforces this in code, not just via instruction: any citation whose
-`doc_id`/`url` doesn't exactly match an evidence item is dropped before the
-state is returned, regardless of what the model produced. The `trace` field
-records how many citations were dropped (`answerer: N/M citations
-grounded`) for debugging and for the UI's agent step log.
+every citation must come verbatim from the evidence it was given, that
+live/web-sourced citations must carry their `url`, and that an empty
+`evidence` list means "say you found nothing" rather than fabricating a
+recommendation. `answerer.py` then enforces the citation part in code, not
+just via instruction: any citation whose `doc_id`/`url` doesn't exactly
+match an evidence item is dropped before the state is returned, regardless
+of what the model produced. The `trace` field records how many citations
+were dropped (`answerer: N/M citations grounded`) for debugging and for
+the UI's agent step log.
 
 ## Prompt disclosure
 

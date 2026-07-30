@@ -25,7 +25,7 @@ in `.env` to run it as a standalone HTTP server instead (`MCP_HTTP_HOST` /
 Vector + metadata search over the full private product catalog, all
 categories (`src/ingestion` → `data/chroma_db/`, 10,002 products).
 Preferred for factual/catalog questions. Requires the
-[ingestion pipeline](../../README.md#data-ingestion) to have been run first —
+[ingestion pipeline](../ingestion/README.md) to have been run first —
 this tool imports `RagRetriever` from `src/ingestion/retriever.py` directly
 and opens the same Chroma collection.
 
@@ -37,7 +37,7 @@ and opens the same Chroma collection.
 | `max_price` | number | no | filter: `price <= max_price` |
 | `min_rating` | number | no | filter: `rating >= min_rating` (always empty in this catalog — see below) |
 | `brand` | string | no | exact-match filter (always empty in this catalog) |
-| `category` | string | no | exact-match filter against `category_top_level` (e.g. `"Home & Kitchen"`, `"Toys & Games"`); omit to search across all categories — see [Category organization](../../README.md#category-organization) |
+| `category` | string | no | exact-match filter against `category_top_level` (e.g. `"Home & Kitchen"`, `"Toys & Games"`); omit to search across all categories — see [Category organization](../ingestion/README.md#category-organization) |
 | `k` | integer | no, default 5 | number of hits to return |
 
 **Output** — list of up to `k` hits:
@@ -53,7 +53,7 @@ and opens the same Chroma collection.
 
 `brand`, `ingredients`, and `rating` are `None` for every product in this
 catalog — see the top-level README's
-[Known data-quality limitations](../../README.md#known-data-quality-limitations).
+[Known data-quality limitations](../ingestion/README.md#known-data-quality-limitations).
 `category_top_level` is `""` for the ~8% of products with no `Category`
 value in the raw data (still searchable unfiltered, just won't match a
 `category` filter).

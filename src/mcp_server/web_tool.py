@@ -200,6 +200,9 @@ def _organic_search(query: str, k: int) -> list[dict]:
     return filtered
 
 
+_SHOPPING_ATTEMPTS = 2
+
+
 def web_search(query: str, k: int = 5) -> list[dict]:
     cached = _result_cache.get(query)
     if cached is not None:
@@ -210,7 +213,17 @@ def web_search(query: str, k: int = 5) -> list[dict]:
 
     results: list[dict] = []
     if WEB_SEARCH_PROVIDER == "serper":
-        results = _call_serper_shopping(query, num=max(k * 2, 10))[:k]
+        # Serper's Shopping endpoint is flaky, not just sparse: the exact
+        # same query has returned a full page of results on one call and an
+        # empty list moments later, repeatedly, in testing — a second
+        # attempt has consistently succeeded. Retrying here (still cheaper
+        # than falling back to organic search's worse results) is
+        # meaningfully different from the organic fallback below, which is
+        # for queries Shopping genuinely has nothing for.
+        for _ in range(_SHOPPING_ATTEMPTS):
+            results = _call_serper_shopping(query, num=max(k * 2, 10))[:k]
+            if results:
+                break
 
     # Shopping has no results for some narrower/less common queries (seen in
     # testing) — organic search is the fallback, not a second-choice provider.

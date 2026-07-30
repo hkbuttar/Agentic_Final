@@ -124,7 +124,7 @@ retriever = RagRetriever()
 retriever.search(query, k=5, where=build_where(max_price=15, min_rating=4.0, brand="Method", category="Home & Kitchen"))
 ```
 
-Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `category`, `category_top_level`, and `model_number` as extra fields).
+Returned dicts already match the `{sku, title, price, rating, brand, ingredients, doc_id}` contract from the project spec (plus `category`, `category_top_level`, `model_number`, and `url` as extra fields).
 
 ## Files
 

@@ -47,7 +47,8 @@ and opens the same Chroma collection.
   "sku": "...", "title": "...", "price": 12.49, "rating": null,
   "brand": null, "category": "Home & Kitchen | Kitchen & Dining | ...",
   "category_top_level": "Home & Kitchen", "ingredients": null,
-  "model_number": "...", "doc_id": "...", "score": 0.83
+  "model_number": "...", "url": "https://www.amazon.com/dp/...",
+  "doc_id": "...", "score": 0.83
 }
 ```
 
@@ -56,8 +57,10 @@ catalog — see the top-level README's
 [Known data-quality limitations](../ingestion/README.md#known-data-quality-limitations).
 `category_top_level` is `""` for the ~8% of products with no `Category`
 value in the raw data (still searchable unfiltered, just won't match a
-`category` filter).
-The Answerer agent must not fabricate these facts.
+`category` filter). `url` is the product's real Amazon listing page —
+populated for the vast majority of rows (`Product Url` in the raw CSV).
+The Answerer agent must not fabricate the fields that are genuinely absent
+(`brand`/`ingredients`/`rating`).
 
 ### `web.search`
 
@@ -86,14 +89,17 @@ Shopping returns nothing for that query.
 
 ```json
 {
-  "title": "...", "url": "...", "snippet": "...",
-  "price": 12.49, "availability": null
+  "title": "...", "url": "...", "snippet": null,
+  "price": 12.49, "availability": null,
+  "brand": "West Elm", "rating": 4.5
 }
 ```
 
-`price` is populated for Shopping results (parsed from the API's price
-field), `null` for organic-fallback results (not parseable from a
-snippet). `availability` is always `null` — neither source provides it.
+`price`, `brand` (merchant name), and `rating` are populated for Shopping
+results when Google has them; all three are always `null` for
+organic-fallback results, which have no structured data to draw them
+from — `snippet` is the inverse, populated only for organic results.
+`availability` is always `null` — neither source provides it.
 
 **Enforcement, before any result is returned:**
 

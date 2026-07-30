@@ -1,6 +1,9 @@
 """web.search — wraps Serper.dev (Shopping, falling back to organic web
 search) or Brave Search (organic only), returning
-{title, url, snippet, price?, availability?}.
+{title, url, snippet, price?, availability?, brand?, rating?}. brand/rating
+are populated for Shopping results (merchant name, product rating when
+Google has one) and always None for organic-fallback results, which have
+no structured data to draw them from.
 
 Enforces a domain allowlist and robots.txt before any *organic* result is
 returned, caches responses (TTL from config), and rate-limits outbound
@@ -119,14 +122,15 @@ def _call_serper_shopping(query: str, num: int) -> list[dict]:
         url = item.get("link")
         if not url:
             continue
-        source = item.get("source")
         results.append(
             {
                 "title": item.get("title"),
                 "url": url,
-                "snippet": f"Sold by {source}" if source else None,
+                "snippet": None,
                 "price": _parse_shopping_price(item.get("price")),
                 "availability": None,
+                "brand": item.get("source") or None,  # merchant name, e.g. "IKEA"
+                "rating": item.get("rating"),  # Shopping API omits this per-item when unavailable
             }
         )
     return results
@@ -187,6 +191,8 @@ def _organic_search(query: str, k: int) -> list[dict]:
                 "snippet": item.get("snippet"),
                 "price": None,
                 "availability": None,
+                "brand": None,  # organic search has no structured merchant/rating data
+                "rating": None,
             }
         )
         if len(filtered) >= k:

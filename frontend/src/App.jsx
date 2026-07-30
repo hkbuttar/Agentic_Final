@@ -14,22 +14,27 @@ const HISTORY_LIMIT = 3;
 
 export default function App() {
   const [transcript, setTranscript] = useState("");
-  const [manualText, setManualText] = useState("");
+  const [newText, setNewText] = useState("");
+  const [followupText, setFollowupText] = useState("");
   const [status, setStatus] = useState("idle"); // idle | transcribing | querying
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([]);
 
-  async function runQueryFor(text) {
+  // `historyForThisCall` is passed explicitly (rather than always reading
+  // the `history` state var) so a "start new conversation" query can pass
+  // `[]` and genuinely ignore prior turns, without waiting on a `setHistory`
+  // reset to flush first.
+  async function runQueryFor(text, historyForThisCall) {
     if (!text.trim()) return;
     setError(null);
     setStatus("querying");
     try {
-      const queryResult = await runQuery(text, history);
+      const queryResult = await runQuery(text, historyForThisCall);
       setResult(queryResult);
-      setHistory((prev) =>
+      setHistory(
         [
-          ...prev,
+          ...historyForThisCall,
           {
             transcript: text,
             intent: queryResult.intent,
@@ -45,33 +50,46 @@ export default function App() {
     }
   }
 
-  function startNewConversation() {
-    setHistory([]);
-    setTranscript("");
-    setManualText("");
-    setResult(null);
-    setError(null);
-  }
-
-  async function handleAudioReady(blob) {
+  async function handleNewAudioReady(blob) {
     setError(null);
     setResult(null);
     setStatus("transcribing");
     try {
       const { text } = await transcribeAudio(blob);
       setTranscript(text);
-      await runQueryFor(text);
+      await runQueryFor(text, []);
     } catch (err) {
       setError(err.message);
       setStatus("idle");
     }
   }
 
-  function handleManualSubmit(event) {
+  async function handleFollowupAudioReady(blob) {
+    setError(null);
+    setStatus("transcribing");
+    try {
+      const { text } = await transcribeAudio(blob);
+      setTranscript(text);
+      await runQueryFor(text, history);
+    } catch (err) {
+      setError(err.message);
+      setStatus("idle");
+    }
+  }
+
+  function handleNewManualSubmit(event) {
     event.preventDefault();
     setResult(null);
-    setTranscript(manualText);
-    runQueryFor(manualText);
+    setTranscript(newText);
+    runQueryFor(newText, []);
+    setNewText("");
+  }
+
+  function handleFollowupManualSubmit(event) {
+    event.preventDefault();
+    setTranscript(followupText);
+    runQueryFor(followupText, history);
+    setFollowupText("");
   }
 
   const busy = status !== "idle";
@@ -80,31 +98,23 @@ export default function App() {
     <div className="app">
       <header>
         <h1>Product Discovery Voice Assistant</h1>
-        <p className="subtitle">
-          Ask for a product recommendation, by voice or text
-          {history.length > 0 && " — follow-ups (“the cheapest one”, “what about under $10”) pick up where the last answer left off"}.
-        </p>
+        <p className="subtitle">Ask for a product recommendation, by voice or text.</p>
       </header>
 
       <section className="panel input-panel">
-        <Recorder onAudioReady={handleAudioReady} disabled={busy} />
-        <form className="manual-form" onSubmit={handleManualSubmit}>
+        <Recorder onAudioReady={handleNewAudioReady} disabled={busy} />
+        <form className="manual-form" onSubmit={handleNewManualSubmit}>
           <input
             type="text"
-            placeholder={history.length > 0 ? "Ask a follow-up..." : "...or type your request"}
-            value={manualText}
-            onChange={(e) => setManualText(e.target.value)}
+            placeholder="...or type your request"
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
             disabled={busy}
           />
-          <button type="submit" className="btn btn-secondary" disabled={busy || !manualText.trim()}>
+          <button type="submit" className="btn btn-secondary" disabled={busy || !newText.trim()}>
             Send
           </button>
         </form>
-        {history.length > 0 && (
-          <button type="button" className="btn btn-secondary" onClick={startNewConversation} disabled={busy}>
-            New Question
-          </button>
-        )}
       </section>
 
       {status === "transcribing" && <p className="status">Transcribing…</p>}
@@ -123,6 +133,23 @@ export default function App() {
           <AgentTrace trace={result.trace} />
           <ComparisonTable evidence={result.evidence} />
           <AnswerPanel answer={result.answer} citations={result.citations} />
+
+          <section className="panel input-panel">
+            <h2>Continue the conversation</h2>
+            <Recorder onAudioReady={handleFollowupAudioReady} disabled={busy} />
+            <form className="manual-form" onSubmit={handleFollowupManualSubmit}>
+              <input
+                type="text"
+                placeholder='Ask a follow-up, e.g. "the cheapest one"'
+                value={followupText}
+                onChange={(e) => setFollowupText(e.target.value)}
+                disabled={busy}
+              />
+              <button type="submit" className="btn btn-secondary" disabled={busy || !followupText.trim()}>
+                Send
+              </button>
+            </form>
+          </section>
         </>
       )}
     </div>

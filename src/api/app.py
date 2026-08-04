@@ -98,6 +98,20 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.api_route("/", methods=["GET", "HEAD"])
+async def root() -> dict:
+    # Render's default health check does `HEAD /` (not the configurable
+    # Health Check Path setting, which defaults to unset) — without this
+    # route it 404s, Render considers the instance unhealthy, and restarts
+    # it, forever, on a loop (confirmed directly from Render's own deploy
+    # logs: "HEAD / HTTP/1.1 404 Not Found" immediately preceding every
+    # restart). Needs `methods=["GET", "HEAD"]` explicitly — FastAPI/
+    # Starlette does NOT implicitly add HEAD support to a plain `@app.get`
+    # route (verified directly: a bare `@app.get("/")` here still 405s on
+    # HEAD, which would have silently failed to fix this).
+    return {"status": "ok"}
+
+
 @app.post("/transcribe")
 async def transcribe_endpoint(audio: UploadFile) -> dict:
     suffix = Path(audio.filename or "audio.wav").suffix or ".wav"

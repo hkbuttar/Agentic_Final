@@ -126,5 +126,14 @@ async def run(state: AgentState, llm: LLMClient) -> dict:
     )
     trace = state.get("trace", [])
     followup_note = " (follow-up on prior results)" if intent.get("is_followup_on_existing_results") else ""
-    trace.append(f"router: {intent['task']!r} (category={intent['category']!r}){followup_note}")
+    # Safety flags are acted on by the Answerer (see prompts/answerer_system.md's
+    # Safety section); surfacing them here too puts them in the UI's step log,
+    # so a flagged request is visibly flagged rather than only implicitly
+    # handled inside the final answer.
+    safety_note = ""
+    if intent.get("safety_flags"):
+        safety_note = f" [safety: {', '.join(intent['safety_flags'])}]"
+    trace.append(
+        f"router: {intent['task']!r} (category={intent['category']!r}){followup_note}{safety_note}"
+    )
     return {"intent": intent, "trace": trace}

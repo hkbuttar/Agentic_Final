@@ -3,9 +3,10 @@ tool should import and call directly — its return shape matches the
 {sku, title, price, rating, brand, ingredients, doc_id} contract the
 Retriever/Answerer agents expect for citations, plus category/
 category_top_level so results can be organized/filtered by category over
-the full (unfiltered-at-ingestion) product set, and brand_inferred — a
+the full (unfiltered-at-ingestion) product set, brand_inferred — a
 heuristic guess, never to be treated the same as the (always-empty) real
-`brand` field. See clean.py's _infer_brand for the heuristic itself.
+`brand` field (see clean.py's _infer_brand) — and price_per_unit/unit, the
+normalized price that makes differently-sized listings comparable.
 """
 from typing import Optional
 
@@ -58,6 +59,17 @@ class RagRetriever:
                 "category_top_level": meta["category_top_level"] or None,
                 "ingredients": meta["ingredients"] or None,
                 "model_number": meta["model_number"] or None,
+                # Normalized price, for fair comparison between differently-
+                # sized listings ("$0.42/oz" vs "$0.61/oz"). Always paired
+                # with `unit` — the number alone can't be compared, since
+                # one row's unit is ounces and the next row's is count.
+                # Derived from `Shipping Weight`, which is unreliable at the
+                # low end (see src/ingestion/README.md#known-data-quality-
+                # limitations), so this is supporting detail, not a ranking
+                # key: rows whose weight is a placeholder produce a wildly
+                # inflated per-unit price.
+                "price_per_unit": meta["price_per_unit"] if meta["price_per_unit"] >= 0 else None,
+                "unit": meta["unit"] or None,
                 "url": meta["url"] or None,
                 "doc_id": meta["doc_id"],
                 "score": 1 - distance,

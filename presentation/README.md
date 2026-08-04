@@ -38,7 +38,13 @@ just the happy path:
    product type — point at the trace line where the relevance check
    rejects them and triggers a live Shopping search, returning a real
    product with a real price and link.
-3. Point at the citations panel — every citation traces to a real
+3. Follow up by voice on whichever query is still on screen — *"which is
+   the best value?"* Two things to point at: the assistant answers from
+   the conversation history rather than starting over (the step log says
+   so), and it reasons in per-unit prices from the "Unit price" column,
+   which is what makes a big cheap item and a small expensive one
+   actually comparable.
+4. Point at the citations panel — every citation traces to a real
    `doc_id` or URL, enforced in code, not just prompted for.
 
 **5:30 – 6:30 — Results.** Two evals, both run against the real live
@@ -60,9 +66,16 @@ bugs:
 absent from the private catalog's source data (verified against the raw
 file); shown as empty rather than guessed, with brand getting a
 clearly-labeled heuristic guess from the title, never presented as fact.
+The same gap is why the embedding is title + features and not the
+title + features + review-snippets the brief describes: this Kaggle file
+ships no reviews and no rating column at all, so there were no snippets
+to embed and no `reviews.parquet` to build — any rating shown in the
+comparison table came from a live web result, never the catalog.
+Per-unit prices are derived from `Shipping Weight`, which is a
+placeholder value for a small share of rows, so a few listings carry an
+implausible figure — shown as-is rather than silently filtered.
 Fragment-based, not streaming, voice I/O. The RAG eval is 10 targeted
-cases, not a statistical sample. The agent has no cross-turn conversation
-memory — every voice query is a one-shot exchange.
+cases, not a statistical sample.
 
 ## Notes for whoever presents
 

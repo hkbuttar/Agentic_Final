@@ -30,12 +30,17 @@ def rag_search_tool(
     — pass it when the user's request names or clearly implies a category,
     omit it to search across all categories. Returns up to k ranked hits:
     {sku, title, price, rating, brand, brand_inferred, category,
-    category_top_level, ingredients, model_number, url, doc_id, score}.
+    category_top_level, ingredients, model_number, price_per_unit, unit,
+    url, doc_id, score}.
     `ingredients`, `rating`, and `brand` are None for every product in this
     catalog (see top-level README's Known data-quality limitations) — do
     not treat None as "value unknown, ask again." `brand_inferred` is a
     heuristic guess from the title, not verified data — never state it as
-    a confirmed fact.
+    a confirmed fact. `price_per_unit` is the price normalized by `unit`
+    ("oz", "lb", "ct", ...) so differently-sized listings can be compared
+    fairly; it is only meaningful alongside that `unit`, and is derived
+    from a shipping weight that is unreliable at the low end, so treat an
+    implausibly high value as bad source data rather than a real price.
     """
     return rag_search(query, max_price=max_price, min_rating=min_rating, brand=brand, category=category, k=k)
 

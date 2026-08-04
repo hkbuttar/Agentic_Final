@@ -12,6 +12,7 @@ The agent graph and its MCP client are built once at startup (see
 `lifespan`) and reused across requests, rather than spawning a fresh MCP
 server subprocess per call.
 """
+import asyncio
 import os
 import sys
 import tempfile
@@ -104,7 +105,12 @@ async def transcribe_endpoint(audio: UploadFile) -> dict:
     try:
         with os.fdopen(fd, "wb") as f:
             f.write(await audio.read())
-        result = transcribe(path)
+        # transcribe() is a blocking, CPU-bound faster-whisper call — calling
+        # it directly here would freeze this process's single event loop for
+        # the full transcription, including /health, for as long as it takes.
+        # On a memory/CPU-constrained host that's long enough to look like a
+        # hung instance to an external health check.
+        result = await asyncio.to_thread(transcribe, path)
     finally:
         os.unlink(path)
 
@@ -157,7 +163,9 @@ async def speak_endpoint(request: SpeakRequest) -> Response:
     fd, path = tempfile.mkstemp(suffix=".wav")
     os.close(fd)
     try:
-        synthesize(request.text, path)
+        # synthesize() blocks on the Azure Speech SDK's own future (.get()) —
+        # same event-loop-freezing concern as transcribe() above.
+        await asyncio.to_thread(synthesize, request.text, path)
         audio_bytes = Path(path).read_bytes()
     except TTSError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e

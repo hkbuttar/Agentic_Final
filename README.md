@@ -19,12 +19,12 @@ Customers often describe what they want in natural, conversational language (e.g
 | **Router** | Extracts task + constraints (budget, brand, material) and safety flags | Transcript | Structured intent object |
 | **Planner** | Chooses sources (private/live), fields to retrieve, comparison criteria | Intent object | Retrieval plan |
 | **Retriever** | Queries private vector DB; calls `web.search` if the plan requires it; reconciles conflicts | Plan | Ranked, cited evidence |
-| **Answerer/Critic** | Synthesizes a concise, cited recommendation; enforces grounding & safety | Evidence | Final answer + citations |
+| **Answerer/Critic** | Synthesizes a concise, cited recommendation; enforces grounding & safety | Evidence | Final answer + citations | 
 
 ### Agent Graph (LangGraph)
 
 - `rag.search` is preferred for factual/catalog questions.
-- `web.search` is additionally invoked when the user asks about current price, availability, "now," or "latest."
+- `web.search` is additionally invoked when the user asks about current price, availability, "now," or "latest." 
 - Results are reconciled by SKU/brand/title similarity, and the router directs the graph to the response path best suited to the identified need.
 
 ### MCP Tool Server (Two Tools)

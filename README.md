@@ -238,7 +238,7 @@ triggering, price-constraint compliance, and citation grounding.
 
 ```bash
 cd src/eval
-python run_eval.py
+python run_eval.py 
 ```
 
 This isn't just a checklist: the first run caught a real bug (rejected

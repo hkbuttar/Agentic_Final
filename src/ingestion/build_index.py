@@ -64,7 +64,11 @@ def build_index() -> None:
     embedder = get_embedder()
 
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    client.delete_collection(CHROMA_COLLECTION) if CHROMA_COLLECTION in [c.name for c in client.list_collections()] else None
+    # chromadb >= 0.6 returns collection *names* from list_collections();
+    # older versions return Collection objects, which raise on `.name` here.
+    existing = [c if isinstance(c, str) else c.name for c in client.list_collections()]
+    if CHROMA_COLLECTION in existing:
+        client.delete_collection(CHROMA_COLLECTION)
     collection = client.create_collection(CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"})
 
     for start in tqdm(range(0, len(df), BATCH_SIZE), desc="embedding + indexing"):

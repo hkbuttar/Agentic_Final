@@ -32,7 +32,7 @@ Customers often describe what they want in natural, conversational language (e.g
 Built with the MCP Python SDK; tool discovery via JSON schema; transport over stdio or HTTP/SSE.
 
 - **`web.search(query)`** — wraps a web search API (Serper.dev or Brave Search API) → returns `{title, url, snippet, price?, availability?}`. Cached (TTL 60–300s), rate-limited.
-- **`rag.search(query, filters)`** — vector + metadata search over the Amazon 2020 slice → returns `{sku, title, price, rating, brand?, ingredients?, doc_id}`.
+- **`rag.search(query, filters)`** — vector + metadata search over the Amazon 2020 catalog → returns `{sku, title, price, rating, brand?, ingredients?, doc_id}`.
 
 All requests/responses are logged with timestamp and source URL. A domain allowlist is enforced and `robots.txt`/ToS are respected.
 
@@ -50,7 +50,7 @@ All requests/responses are logged with timestamp and source URL. A domain allowl
 ### Retrieval Corpus
 
 - **Source:** Amazon Product Dataset 2020 (Kaggle), full dataset (10,002 products, all categories)
-- **Schema:** `products.parquet` — `id, title, brand, category, category_top_level, price, rating, features, ingredients`
+- **Schema:** `products.parquet`, 16 columns — `id, title, brand, brand_inferred, category, category_top_level, price, rating, ingredients, model_number, url, unit_qty, unit, price_per_unit, features, doc_id`
 - **Organization:** `category_top_level` (e.g. "Home & Kitchen", "Toys & Games") is stored as filterable Chroma metadata, not used to pre-filter at ingestion time — `rag.search` can scope a query to one category or search across all of them
 - **Embeddings:** Title + features via `sentence-transformers` (`all-MiniLM-L6-v2`); stored in a persistent Chroma collection (cosine distance)
 - **No review snippets, and no `reviews.parquet`:** the brief's embedding recipe is title + features + top review snippets, but this Kaggle file contains no reviews and no rating column of any kind (confirmed in `notebooks/00_eda.ipynb` against all 10,002 raw rows) — there were no snippets to embed. `rating` is therefore `None` for every catalog row, and any rating the UI shows came from a live `web.search` result, clearly tagged as such. `ingredients` is likewise 100% empty, so it's excluded from the embedding text (it would contribute nothing) but kept in metadata
@@ -162,8 +162,8 @@ React/JS root.
    - LLM provider + API key (Claude API)
    - Web search API key (Serper.dev or Brave Search API)
    - Azure Speech credentials
-   - Vector DB / category config (see [Data Ingestion](#data-ingestion))
-3. Run the data ingestion pipeline (below) to build the Chroma index from the Amazon 2020 dataset slice.
+   - Vector DB config — `CHROMA_DIR`, `CHROMA_COLLECTION` (see [Data Ingestion](#data-ingestion))
+3. Run the data ingestion pipeline (below) to build the Chroma index from the Amazon Product Dataset 2020.
 4. Start the MCP server (stdio or HTTP/SSE) — see [MCP Server](#mcp-server).
 5. Start the backend agent graph service and the React frontend.
 6. Record or upload a voice query in the UI to trigger the full pipeline.
@@ -354,11 +354,11 @@ default) returns `access-control-allow-origin: http://localhost:5173`.
 
 ## Presentation
 
-Demo script with timing, architecture walkthrough, the two live-demo
-queries (chosen to show the relevance-check/web-fallback path, not just
-the happy path), and honest limitations: [presentation/README.md](presentation/README.md).
-A slide-deck version of the same script, formatted for walking through
-live, is linked from that file.
+Slide-by-slide outline of the final deck — architecture walkthrough, the
+two live-demo queries (chosen to show the relevance-check/web-fallback
+path, not just the happy path), eval results, and honest limitations:
+[presentation/slide_builder_outline.md](presentation/slide_builder_outline.md).
+The built deck lives in the same folder.
 
 ## Prompt Disclosure
 

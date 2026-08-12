@@ -81,7 +81,7 @@ element's `src` set from a blob URL.
 ## Design notes
 
 - **CORS**: `API_CORS_ORIGINS` in `.env` (comma-separated). Add the
-  frontend's dev origin and its deployed (Vercel) origin.
+  frontend's dev origin (and any other origin it's served from).
 - **Why three endpoints instead of one**: matches the UI's actual
   interaction shape — a user records once, sees the transcript/answer, and
   only *optionally* clicks "Play" to hear it. Bundling ASR+graph+TTS into

@@ -87,7 +87,7 @@
   > "An unsupported 'yes, it's safe' is the worst possible failure here."
 
 ## Slide 11 — Interface
-- **Framework:** React (Vite) → deployed via GitHub → Vercel; FastAPI backend (`/transcribe`, `/query`, `/speak`)
+- **Framework:** React (Vite), run locally via the dev server; FastAPI backend (`/transcribe`, `/query`, `/speak`)
 - **UI regions, each mapped to a component:**
   - Mic capture / file upload (`Recorder.jsx`)
   - Live transcript (`App.jsx`)

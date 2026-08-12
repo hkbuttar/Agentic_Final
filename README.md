@@ -60,7 +60,7 @@ Full ingestion pipeline, schema decisions, and known data-quality caveats: [src/
 
 ### User Interface
 
-- **Framework:** React, deployed via GitHub → Vercel
+- **Framework:** React (Vite), run locally via the dev server
 - **Features:** Mic capture (record/upload), live transcript, agent step log, comparison table, citations, Play TTS button
 
 ## LLM & Configuration

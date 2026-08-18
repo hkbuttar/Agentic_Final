@@ -28,10 +28,10 @@ export default function AnswerPanel({ answer, citations }) {
 
   return (
     <section className="panel answer-panel">
-      <h2>Answer</h2>
+      <p className="section-label">Answer</p>
       <p className="answer-text">{answer}</p>
       <button type="button" className="btn btn-primary" onClick={handlePlay} disabled={playing}>
-        {playing ? "Playing…" : "▶ Play"}
+        {playing ? "Playing…" : "▶ Play answer"}
       </button>
       {error && <p className="error">{error}</p>}
       {citations?.length > 0 && (
@@ -47,7 +47,7 @@ export default function AnswerPanel({ answer, citations }) {
                   </a>
                 </>
               )}
-              {c.doc_id && !c.url && <span className="doc-id"> (doc_id: {c.doc_id})</span>}
+              {c.doc_id && !c.url && <span className="doc-id">doc_id: {c.doc_id}</span>}
             </li>
           ))}
         </ul>

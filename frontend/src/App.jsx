@@ -124,8 +124,11 @@ export default function App() {
       {log.map((turn, i) => (
         <Fragment key={i}>
           <section className="panel">
-            <h2>{i === 0 ? "Transcript" : "Follow-up"}</h2>
-            <p>{turn.transcript}</p>
+            <p className="section-label">{i === 0 ? "Transcript" : "Follow-up"}</p>
+            <div className="transcript">
+              <span className="who-chip">You</span>
+              <p>{turn.transcript}</p>
+            </div>
           </section>
           <AgentTrace trace={turn.trace} />
           <ComparisonTable evidence={turn.evidence} />
@@ -133,13 +136,17 @@ export default function App() {
         </Fragment>
       ))}
 
-      {status === "transcribing" && <p className="status">Transcribing…</p>}
-      {status === "querying" && <p className="status">Thinking…</p>}
-      {error && <p className="error">{error}</p>}
+      {status === "transcribing" && (
+        <p className="status" aria-live="polite"><span className="spinner" />Transcribing…</p>
+      )}
+      {status === "querying" && (
+        <p className="status" aria-live="polite"><span className="spinner" />Thinking…</p>
+      )}
+      {error && <p className="error" role="alert">{error}</p>}
 
       {log.length > 0 && (
         <section className="panel input-panel">
-          <h2>Continue the conversation</h2>
+          <p className="section-label">Continue the conversation</p>
           <Recorder onAudioReady={handleFollowupAudioReady} disabled={busy} />
           <form className="manual-form" onSubmit={handleFollowupManualSubmit}>
             <input

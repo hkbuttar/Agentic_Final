@@ -31,7 +31,7 @@ export default function ComparisonTable({ evidence }) {
 
   return (
     <section className="panel">
-      <h2>Comparison</h2>
+      <p className="section-label">Comparison</p>
       <div className="table-scroll">
         <table>
           <thead>
@@ -70,7 +70,15 @@ export default function ComparisonTable({ evidence }) {
                     )
                   )}
                 </td>
-                <td>{item.source}</td>
+                <td>
+                  {item.source === "private" ? (
+                    <span className="source-pill source-catalog">Catalog</span>
+                  ) : item.source === "live" ? (
+                    <span className="source-pill source-live">Live web</span>
+                  ) : (
+                    item.source
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

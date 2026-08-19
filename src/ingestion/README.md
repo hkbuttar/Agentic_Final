@@ -3,8 +3,8 @@
 Turns the raw Kaggle Amazon Product Dataset 2020 dump into the Chroma
 vector index that the [`rag.search` MCP tool](../mcp_server/README.md)
 queries — see the top-level README's
-[Retrieval Corpus](../../README.md#retrieval-corpus) for where this fits
-in the overall architecture.
+[Data](../../README.md#data) section for where this fits in the overall
+architecture.
 
 ## Setup
 

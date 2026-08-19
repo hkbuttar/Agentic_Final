@@ -20,7 +20,7 @@ in `.env`, and the ingestion pipeline already run.
 ## Endpoints
 
 Each endpoint maps directly to one item in the top-level README's
-[User Interface](../../README.md#user-interface) feature list.
+[Interface](../../README.md#interface) feature list.
 
 ### `GET /health`
 

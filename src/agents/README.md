@@ -2,7 +2,7 @@
 
 LangGraph state graph implementing the Router → Planner → Retriever →
 Answerer/Critic flow from the top-level README's
-[System Architecture](../../README.md#system-architecture). Talks to the
+[Architecture](../../README.md#architecture). Talks to the
 private catalog and the web only through the [MCP server](../mcp_server/README.md)
 (`src/mcp_server`) — no node imports `retriever.py` or a search API directly.
 

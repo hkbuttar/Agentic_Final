@@ -2,7 +2,7 @@
 
 React (Vite) UI for the voice-to-voice product discovery assistant. Calls
 [../src/api](../src/api) — see the top-level README's
-[Frontend](../README.md#frontend) section for the feature/component mapping.
+[Interface](../README.md#interface) section for the feature/component mapping.
 
 ```bash
 npm install

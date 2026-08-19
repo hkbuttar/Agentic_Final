@@ -54,7 +54,7 @@ and opens the same Chroma collection.
 ```
 
 `brand`, `ingredients`, and `rating` are `None` for every product in this
-catalog — see the top-level README's
+catalog — see the ingestion README's
 [Known data-quality limitations](../ingestion/README.md#known-data-quality-limitations).
 `brand_inferred` is a heuristic guess from the title (see
 [Brand inference](../ingestion/README.md#brand-inference)), *not* verified
@@ -132,8 +132,7 @@ from — `snippet` is the inverse, populated only for organic results.
 
 Every `rag.search` / `web.search` call appends one JSON line to
 `../../logs/mcp_requests.log`: `{timestamp, tool, query, doc_ids | source_urls}`.
-No API keys or full response bodies are logged, per the top-level README's
-[Safety Notes](../../README.md#safety-notes).
+No API keys or full response bodies are logged.
 
 ## Files
 

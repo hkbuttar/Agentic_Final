@@ -8,9 +8,22 @@ async function parseJsonOrThrow(response) {
   return response.json();
 }
 
+const EXTENSION_BY_MIME_TYPE = [
+  ["webm", "webm"],
+  ["ogg", "ogg"],
+  ["mp4", "mp4"],
+  ["wav", "wav"],
+];
+
+function extensionForBlob(blob) {
+  const type = blob.type || "";
+  const match = EXTENSION_BY_MIME_TYPE.find(([needle]) => type.includes(needle));
+  return match ? match[1] : "webm";
+}
+
 export async function transcribeAudio(blob) {
   const form = new FormData();
-  form.append("audio", blob, "recording.wav");
+  form.append("audio", blob, `recording.${extensionForBlob(blob)}`);
   const response = await fetch(`${API_BASE_URL}/transcribe`, { method: "POST", body: form });
   return parseJsonOrThrow(response);
 }

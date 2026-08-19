@@ -22,6 +22,24 @@ export default function Recorder({ onAudioReady, disabled }) {
   // MediaRecorder gotcha, not specific to this app.
   const MIC_WARMUP_MS = 300;
 
+  // Chrome/Firefox/Safari each support a different subset of container/codec
+  // combos for MediaRecorder — asking for one explicitly (instead of letting
+  // the browser pick silently) means we know exactly what we got back and can
+  // label the Blob correctly, rather than assuming "audio/webm" and shipping
+  // a file whose declared type doesn't match its actual bytes.
+  const CANDIDATE_MIME_TYPES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+
+  function pickSupportedMimeType() {
+    return CANDIDATE_MIME_TYPES.find(
+      (type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(type)
+    );
+  }
+
   async function startRecording() {
     setMicError(null);
     stopRequestedRef.current = false;
@@ -39,14 +57,17 @@ export default function Recorder({ onAudioReady, disabled }) {
         return;
       }
 
-      const recorder = new MediaRecorder(stream);
+      const mimeType = pickSupportedMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
-        onAudioReady(new Blob(chunksRef.current, { type: "audio/webm" }));
+        // recorder.mimeType reflects what the browser actually recorded,
+        // which may differ from what we requested above.
+        onAudioReady(new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" }));
       };
       recorder.start(CHUNK_INTERVAL_MS);
       mediaRecorderRef.current = recorder;

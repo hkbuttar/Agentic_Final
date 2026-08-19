@@ -76,7 +76,7 @@ export default function Recorder({ onAudioReady, disabled }) {
         onClick={isRecording ? stopRecording : startRecording}
         disabled={disabled}
       >
-        {isRecording ? "⏹ Stop Recording" : "🎙 Record"}
+        {isRecording ? <><span className="rec-dot" />Stop recording</> : "Record"}
       </button>
       <label className={`btn btn-secondary file-upload ${disabled ? "btn-disabled" : ""}`}>
         Upload audio

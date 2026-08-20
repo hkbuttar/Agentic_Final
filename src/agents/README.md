@@ -124,6 +124,15 @@ that directory is the single source of truth, not a separate copy kept in
 sync by hand. See the top-level README's
 [Prompt Disclosure](../../README.md#prompt-disclosure) section.
 
+All four prompts open with the same anti-injection instruction, varying only
+in which untrusted input they name: the Router's transcript and history, the
+Planner's intent, the Retriever's candidate titles, the Answerer's evidence.
+The Retriever's and Answerer's are the ones with teeth — a catalog title
+engineered to force `satisfactory: true` would suppress the web fallback, and
+a merchant-written Shopping title is genuinely third-party text reaching the
+model. Because they're read at import time, editing a prompt takes effect on
+restart, not on save.
+
 ## Files
 
 | file | role |
